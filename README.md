@@ -44,23 +44,23 @@ All modules use **Alpha Vantage API** for fetching financial data and are organi
 
 ## 📸 Implementation Screenshots
 
-### 🏠 App Overview
-![App Overview](images/app_overview.png)
+### Stock-Predictor
+![Stock Predictor](images/Stock_Predictor.png)
 
-### 📈 Stock Predictor – Prediction Output
-![Stock Predictor Output](images/predictor_output.png)
+### Stock-Prediction & Stock-News
+![Stock Prediction with News](images/Stock_Prediction_with_News.png)
 
-### 📉 Stock Predictor – Candlestick & Indicators
-![Stock Predictor Chart](images/predictor_chart.png)
+### Stock-Correlation-Heatmap
+![Stock Correlation Heatmap](images/Stock_Correlation_Heatmap.png)
 
-### 📊 Historical Analysis – SMA & Volume Charts
-![Historical Analysis](images/historical_analysis.png)
+### Correlation-Price-Normalization
+![Correlation and Price Normalization](images/Correlation_and_Price_Normalization.png)
 
-### 🔗 Correlation Dashboard – Heatmap
-![Correlation Heatmap](images/correlation_heatmap.png)
+### Historical-Price-Analysis
+![Historical Price Analysis with Data](images/Historical_Price_Analysis_with_Data.png)
 
-### 🔄 Correlation Dashboard – Normalized Price Comparison
-![Correlation Normalized Chart](images/correlation_normalized.png)
+### Candlestick-Chart
+![Candlestick Chart](images/Candlestick_Chart.png)
 
 ---
 
