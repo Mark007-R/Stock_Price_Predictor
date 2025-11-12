@@ -1,30 +1,55 @@
 from flask import Blueprint, render_template, request
-import yfinance as yf
 import pandas as pd
+from datetime import datetime, timedelta
 import time
 from functools import lru_cache
+import requests
 import warnings
 warnings.filterwarnings('ignore')
 
 historical_bp = Blueprint('historical', __name__)
 
+# Alpha Vantage API Key
+ALPHA_VANTAGE_API_KEY = "UV0H8FN0FJWS5WVK"
+
 # Cache historical data to prevent repeated API calls
 @lru_cache(maxsize=50)
-def fetch_historical_data_cached(ticker, period, interval):
-    """Fetch historical data with caching"""
+def fetch_historical_data_alpha(ticker, outputsize='full'):
+    """Fetch historical data from Alpha Vantage with caching"""
     try:
-        time.sleep(1)  # Rate limiting delay
-        df = yf.download(ticker, period=period, interval=interval, 
-                        progress=False, show_errors=False)
+        url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&outputsize={outputsize}&apikey={ALPHA_VANTAGE_API_KEY}'
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        
+        if "Time Series (Daily)" not in data:
+            if "Note" in data:
+                raise Exception("API rate limit reached. Please wait a minute and try again.")
+            elif "Error Message" in data:
+                raise Exception(f"Invalid ticker symbol: {ticker}")
+            else:
+                raise Exception(f"Unable to fetch data: {data.get('Information', 'Unknown error')}")
+        
+        # Convert to DataFrame
+        time_series = data["Time Series (Daily)"]
+        df = pd.DataFrame.from_dict(time_series, orient='index')
+        df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+        df.index = pd.to_datetime(df.index)
+        df = df.sort_index()
+        
+        # Convert to float
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col])
+        
         return df
     except Exception as e:
         raise Exception(f"Failed to fetch data: {str(e)}")
 
-def fetch_historical_with_retry(ticker, period, interval, max_retries=3):
+def fetch_historical_with_retry(ticker, max_retries=3):
     """Fetch historical data with retry logic"""
     for attempt in range(max_retries):
         try:
-            df = fetch_historical_data_cached(ticker, period, interval)
+            time.sleep(1)  # Rate limiting delay
+            df = fetch_historical_data_alpha(ticker, outputsize='full')
             if df.empty:
                 raise ValueError(f"No data found for ticker {ticker}")
             return df
@@ -48,21 +73,54 @@ def analyze():
             return render_template("historical.html", 
                 error="Please enter a valid stock ticker")
         
-        # Validate period
-        valid_periods = ["1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
-        if period not in valid_periods:
+        # Map period to days
+        period_map = {
+            "1mo": 30,
+            "3mo": 90,
+            "6mo": 180,
+            "1y": 365,
+            "2y": 730,
+            "5y": 1825,
+            "10y": 3650,
+            "ytd": (datetime.today() - datetime(datetime.today().year, 1, 1)).days,
+            "max": None  # Get all available data
+        }
+        
+        if period not in period_map:
             return render_template("historical.html", 
                 error="Invalid period selected")
         
-        # Validate interval
-        valid_intervals = ["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", 
-                          "1d", "5d", "1wk", "1mo", "3mo"]
-        if interval not in valid_intervals:
-            return render_template("historical.html", 
-                error="Invalid interval selected")
-        
         try:
-            df = fetch_historical_with_retry(ticker, period, interval)
+            # Fetch data from Alpha Vantage
+            df = fetch_historical_with_retry(ticker)
+            
+            # Filter based on period
+            if period_map[period] is not None:
+                start_date = datetime.today() - timedelta(days=period_map[period])
+                df = df[df.index >= start_date]
+            
+            # Note: Alpha Vantage only provides daily data in the free tier
+            # If user selected weekly or monthly, we'll resample
+            if interval == "1wk":
+                df = df.resample('W').agg({
+                    'Open': 'first',
+                    'High': 'max',
+                    'Low': 'min',
+                    'Close': 'last',
+                    'Volume': 'sum'
+                }).dropna()
+            elif interval == "1mo":
+                df = df.resample('M').agg({
+                    'Open': 'first',
+                    'High': 'max',
+                    'Low': 'min',
+                    'Close': 'last',
+                    'Volume': 'sum'
+                }).dropna()
+            
+            if df.empty:
+                return render_template("historical.html", 
+                    error="No data available for the selected period")
             
             # Calculate technical indicators
             df["SMA20"] = df["Close"].rolling(window=20).mean()
@@ -121,9 +179,9 @@ def analyze():
                 error=f"Invalid ticker or no data available: {str(ve)}")
         except Exception as e:
             error_msg = str(e)
-            if "Too Many Requests" in error_msg or "Rate limit" in error_msg:
+            if "rate limit" in error_msg.lower():
                 return render_template("historical.html", 
-                    error="Rate limit exceeded. Please wait a few minutes and try again.")
+                    error="Alpha Vantage rate limit reached (25 requests/day). Please try again later.")
             return render_template("historical.html", error=f"Error: {error_msg}")
     
     return render_template("historical.html")

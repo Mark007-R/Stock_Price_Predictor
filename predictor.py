@@ -1,5 +1,4 @@
 from flask import Blueprint, render_template, request, flash
-import yfinance as yf
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
@@ -8,28 +7,53 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 import time
 from functools import lru_cache
+import requests
 import warnings
 warnings.filterwarnings('ignore')
 
 predict_bp = Blueprint('predict', __name__)
 
+# Alpha Vantage API Key
+ALPHA_VANTAGE_API_KEY = "UV0H8FN0FJWS5WVK"
+
 # Cache for stock data to prevent repeated API calls
 @lru_cache(maxsize=100)
-def fetch_stock_data_cached(ticker, start_date, end_date):
-    """Fetch stock data with caching to reduce API calls"""
+def fetch_stock_data_alpha(ticker, outputsize='full'):
+    """Fetch daily stock data from Alpha Vantage"""
     try:
-        time.sleep(1)  # Rate limiting delay
-        data = yf.download(ticker, start=start_date, end=end_date, 
-                          progress=False, show_errors=False)
-        return data
+        url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&outputsize={outputsize}&apikey={ALPHA_VANTAGE_API_KEY}'
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        
+        if "Time Series (Daily)" not in data:
+            if "Note" in data:
+                raise Exception("API rate limit reached. Please wait a minute and try again.")
+            elif "Error Message" in data:
+                raise Exception(f"Invalid ticker symbol: {ticker}")
+            else:
+                raise Exception(f"Unable to fetch data: {data.get('Information', 'Unknown error')}")
+        
+        # Convert to DataFrame
+        time_series = data["Time Series (Daily)"]
+        df = pd.DataFrame.from_dict(time_series, orient='index')
+        df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+        df.index = pd.to_datetime(df.index)
+        df = df.sort_index()
+        
+        # Convert to float
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col])
+        
+        return df
     except Exception as e:
-        raise Exception(f"Failed to fetch data: {str(e)}")
+        raise Exception(f"Error fetching data: {str(e)}")
 
-def fetch_stock_data_with_retry(ticker, start_date, end_date, max_retries=3):
+def fetch_stock_data_with_retry(ticker, max_retries=3):
     """Fetch stock data with retry logic"""
     for attempt in range(max_retries):
         try:
-            data = fetch_stock_data_cached(ticker, start_date, end_date)
+            time.sleep(1)  # Rate limiting delay
+            data = fetch_stock_data_alpha(ticker, outputsize='full')
             if data.empty:
                 raise ValueError(f"No data found for ticker {ticker}")
             return data
@@ -60,11 +84,12 @@ def predict():
         return render_template("home.html", error="Invalid number of days")
 
     try:
-        # Data Download with retry logic
-        end_date = datetime.today().strftime('%Y-%m-%d')
-        start_date = (datetime.today() - timedelta(days=730)).strftime('%Y-%m-%d')
+        # Fetch stock data from Alpha Vantage
+        data = fetch_stock_data_with_retry(ticker)
         
-        data = fetch_stock_data_with_retry(ticker, start_date, end_date)
+        # Filter to last 2 years for faster processing
+        two_years_ago = datetime.today() - timedelta(days=730)
+        data = data[data.index >= two_years_ago]
 
         # Check if we have enough data
         if len(data) < 100:
@@ -150,7 +175,7 @@ def predict():
         return render_template("home.html", error=f"Invalid ticker or data: {str(ve)}")
     except Exception as e:
         error_msg = str(e)
-        if "Too Many Requests" in error_msg or "Rate limit" in error_msg:
+        if "rate limit" in error_msg.lower():
             return render_template("home.html", 
-                error="Rate limit exceeded. Please wait a few minutes and try again.")
+                error="Alpha Vantage rate limit reached (25 requests/day). Please try again later.")
         return render_template("home.html", error=f"Error: {error_msg}")

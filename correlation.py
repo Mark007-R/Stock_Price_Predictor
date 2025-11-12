@@ -1,42 +1,48 @@
 from flask import Blueprint, render_template, request
-import yfinance as yf
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 from functools import lru_cache
+import requests
 import warnings
 warnings.filterwarnings('ignore')
 
 correlation_bp = Blueprint('correlation', __name__)
 
+# Alpha Vantage API Key
+ALPHA_VANTAGE_API_KEY = "UV0H8FN0FJWS5WVK"
+
 # Cache correlation data to prevent repeated API calls
 @lru_cache(maxsize=50)
-def fetch_correlation_data_cached(tickers_str, start_date, end_date):
-    """Fetch correlation data with caching"""
+def fetch_stock_data_alpha(ticker, outputsize='full'):
+    """Fetch stock data from Alpha Vantage"""
     try:
-        tickers = tickers_str.split(',')
-        time.sleep(1)  # Rate limiting delay
-        data = yf.download(tickers, start=start_date, end=end_date, 
-                          progress=False, show_errors=False)
-        return data
-    except Exception as e:
-        raise Exception(f"Failed to fetch data: {str(e)}")
-
-def fetch_correlation_with_retry(tickers_str, start_date, end_date, max_retries=3):
-    """Fetch correlation data with retry logic"""
-    for attempt in range(max_retries):
-        try:
-            data = fetch_correlation_data_cached(tickers_str, start_date, end_date)
-            if data.empty:
-                raise ValueError("No data found for the provided tickers")
-            return data
-        except Exception as e:
-            if attempt < max_retries - 1:
-                wait_time = (2 ** attempt) * 2
-                time.sleep(wait_time)
-                continue
+        url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&outputsize={outputsize}&apikey={ALPHA_VANTAGE_API_KEY}'
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        
+        if "Time Series (Daily)" not in data:
+            if "Note" in data:
+                raise Exception("API rate limit reached. Please wait a minute and try again.")
+            elif "Error Message" in data:
+                raise Exception(f"Invalid ticker symbol: {ticker}")
             else:
-                raise Exception(f"Failed after {max_retries} attempts. Please try again later.")
+                raise Exception(f"Unable to fetch data")
+        
+        # Convert to DataFrame
+        time_series = data["Time Series (Daily)"]
+        df = pd.DataFrame.from_dict(time_series, orient='index')
+        df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+        df.index = pd.to_datetime(df.index)
+        df = df.sort_index()
+        
+        # Convert to float
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col])
+        
+        return df
+    except Exception as e:
+        raise Exception(f"Failed to fetch data for {ticker}: {str(e)}")
 
 @correlation_bp.route('/correlation', methods=["GET", "POST"])
 def analyze():
@@ -64,38 +70,54 @@ def analyze():
         end_date = request.form.get("end_date", datetime.today().strftime('%Y-%m-%d'))
         
         try:
-            # Convert tickers list to string for caching
-            tickers_str = ','.join(tickers)
+            # Fetch data for each ticker
+            close_data = pd.DataFrame()
             
-            data = fetch_correlation_with_retry(tickers_str, start_date, end_date)
-            
-            # Handle multi-index columns for multiple tickers
-            if len(tickers) == 1:
-                close_data = data[["Close"]]
-                close_data.columns = [tickers[0]]
-            else:
-                close_data = data["Close"]
+            for ticker in tickers:
+                try:
+                    # Fetch data from Alpha Vantage
+                    df = fetch_stock_data_alpha(ticker, outputsize='full')
+                    
+                    # Filter by date range
+                    df = df[(df.index >= start_date) & (df.index <= end_date)]
+                    
+                    if not df.empty:
+                        close_data[ticker] = df['Close']
+                    
+                    # Rate limiting: Alpha Vantage free tier allows 5 calls/minute
+                    time.sleep(12)  # Wait 12 seconds between calls
+                    
+                except Exception as e:
+                    # Continue with other tickers if one fails
+                    return render_template("correlation.html", 
+                        error=f"Failed to fetch data for {ticker}: {str(e)}")
             
             # Check if we have valid data
+            if close_data.empty or len(close_data.columns) < 2:
+                return render_template("correlation.html", 
+                    error="Not enough valid data found for correlation analysis")
+            
+            # Drop rows with any NaN values
+            close_data = close_data.dropna()
+            
             if close_data.empty:
                 return render_template("correlation.html", 
-                    error="No valid data found for the selected tickers and date range")
+                    error="No overlapping data found for the selected tickers and date range")
             
             # Calculate correlation matrix
             corr_matrix = close_data.corr()
             
             # Calculate additional statistics
             stats = {}
-            for ticker in tickers:
-                if ticker in close_data.columns:
-                    ticker_data = close_data[ticker].dropna()
-                    if len(ticker_data) > 0:
-                        stats[ticker] = {
-                            "current_price": round(ticker_data.iloc[-1], 2),
-                            "price_change": round(((ticker_data.iloc[-1] / ticker_data.iloc[0]) - 1) * 100, 2),
-                            "volatility": round(ticker_data.pct_change().std() * 100, 2),
-                            "mean_price": round(ticker_data.mean(), 2)
-                        }
+            for ticker in close_data.columns:
+                ticker_data = close_data[ticker].dropna()
+                if len(ticker_data) > 0:
+                    stats[ticker] = {
+                        "current_price": round(ticker_data.iloc[-1], 2),
+                        "price_change": round(((ticker_data.iloc[-1] / ticker_data.iloc[0]) - 1) * 100, 2),
+                        "volatility": round(ticker_data.pct_change().std() * 100, 2),
+                        "mean_price": round(ticker_data.mean(), 2)
+                    }
             
             # Find strongest correlations
             corr_pairs = []
@@ -115,7 +137,7 @@ def analyze():
             
             return render_template(
                 "correlation.html",
-                tickers=tickers,
+                tickers=list(close_data.columns),
                 corr_matrix=corr_matrix.round(3).values.tolist(),
                 labels=corr_matrix.columns.tolist(),
                 stats=stats,
@@ -129,9 +151,9 @@ def analyze():
                 error=f"Invalid ticker or no data available: {str(ve)}")
         except Exception as e:
             error_msg = str(e)
-            if "Too Many Requests" in error_msg or "Rate limit" in error_msg:
+            if "rate limit" in error_msg.lower():
                 return render_template("correlation.html", 
-                    error="Rate limit exceeded. Please wait a few minutes and try again.")
+                    error="Alpha Vantage rate limit reached (25 requests/day, 5 requests/minute). Please try again later.")
             return render_template("correlation.html", error=f"Error: {error_msg}")
     
     return render_template("correlation.html")
