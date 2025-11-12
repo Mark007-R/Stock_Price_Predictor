@@ -1,0 +1,411 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h2 class="card-title text-center mb-3">📈 Stock Price Predictor</h2>
+                <p class="text-center text-muted mb-4">Predict future stock prices using LSTM Neural Networks powered by
+                    AI</p>
+
+                <form method="POST" action="/predict" class="row g-3 mt-3">
+                    <div class="col-md-5">
+                        <label for="ticker" class="form-label">Stock Ticker Symbol</label>
+                        <input type="text" name="ticker" id="ticker" class="form-control"
+                            value="{{ request.form.ticker or 'AAPL' }}" placeholder="e.g., AAPL, MSFT, TSLA"
+                            pattern="[A-Za-z]{1,10}" required>
+                        <small class="form-text">Enter a valid stock ticker symbol</small>
+                    </div>
+
+                    <div class="col-md-5">
+                        <label for="num_days" class="form-label">Prediction Period (Days)</label>
+                        <input type="number" name="num_days" id="num_days" class="form-control"
+                            value="{{ request.form.num_days or 30 }}" min="1" max="365" required>
+                        <small class="form-text">Choose between 1 to 365 days</small>
+                    </div>
+
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-success w-100">
+                            <strong>🚀 Predict</strong>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if error %}
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <strong>⚠️ Error:</strong> {{ error }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        {% if ticker %}
+        <!-- Current Price Section -->
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <div class="metric-card">
+                    <div class="metric-label">Stock Ticker</div>
+                    <div class="metric-value">{{ ticker }}</div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="metric-card">
+                    <div class="metric-label">Current Price</div>
+                    <div class="metric-value">${{ '%.2f'|format(current_price) }}</div>
+                    <small style="opacity: 0.9;">As of {{ last_date }}</small>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="metric-card">
+                    <div class="metric-label">Model Accuracy</div>
+                    <div class="metric-value" style="font-size: 1.5rem;">
+                        {% if rmse %}
+                        RMSE: ${{ rmse }}
+                        {% endif %}
+                    </div>
+                    {% if mae %}
+                    <small style="opacity: 0.9;">MAE: ${{ mae }}</small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Historical Predictions Chart -->
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h5 class="card-title mb-4">📊 Model Validation: Predicted vs Actual Prices</h5>
+                <div style="position: relative; height: 400px;">
+                    <canvas id="validationChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Historical Predictions Table -->
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h5 class="card-title mb-4">📋 Prediction Details (Last {{ actual|length }} Days)</h5>
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-bordered table-hover text-center align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Date</th>
+                                <th>Actual Price</th>
+                                <th>Predicted Price</th>
+                                <th>Difference</th>
+                                <th>Accuracy</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for date, a, p in zip(dates, actual, predicted) %}
+                            <tr>
+                                <td><strong>{{ date }}</strong></td>
+                                <td><strong>${{ '%.2f'|format(a) }}</strong></td>
+                                <td><strong>${{ '%.2f'|format(p) }}</strong></td>
+                                <td class="{% if (a-p) > 0 %}text-danger{% else %}text-success{% endif %}">
+                                    <strong>${{ '%.2f'|format(a-p) }}</strong>
+                                </td>
+                                <td>
+                                    {% set accuracy = 100 - (abs(a-p)/a * 100) %}
+                                    <span
+                                        class="badge {% if accuracy >= 95 %}bg-success{% elif accuracy >= 90 %}bg-warning{% else %}bg-danger{% endif %}">
+                                        {{ '%.1f'|format(accuracy) }}%
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Future Predictions Chart -->
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h5 class="card-title mb-4">🔮 Future Price Predictions (Next {{ future_preds|length }} Days)</h5>
+                <div style="position: relative; height: 400px;">
+                    <canvas id="futureChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Future Predictions Table -->
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h5 class="card-title mb-4">📅 Future Prediction Details</h5>
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-bordered table-hover text-center align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Date</th>
+                                <th>Predicted Price</th>
+                                <th>Change from Current</th>
+                                <th>% Change</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d, p in zip(future_dates, future_preds) %}
+                            <tr>
+                                <td><strong>{{ d }}</strong></td>
+                                <td><strong>${{ '%.2f'|format(p) }}</strong></td>
+                                <td class="{% if (p-current_price) > 0 %}text-success{% else %}text-danger{% endif %}">
+                                    <strong>${{ '%.2f'|format(p-current_price) }}</strong>
+                                </td>
+                                <td>
+                                    {% set pct_change = ((p-current_price)/current_price * 100) %}
+                                    <span class="badge {% if pct_change > 0 %}bg-success{% else %}bg-danger{% endif %}">
+                                        {{ '%.2f'|format(pct_change) }}%
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Download Section -->
+        <div class="text-center mb-4">
+            <button class="btn btn-outline-success btn-lg" onclick="downloadCSV()">
+                📥 Download Predictions as CSV
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{% if ticker %}
+<script>
+    // Chart.js default configuration
+    Chart.defaults.font.family = "'Inter', sans-serif";
+    Chart.defaults.font.size = 12;
+
+    // Validation Chart
+    const validationCtx = document.getElementById('validationChart').getContext('2d');
+    const validationChart = new Chart(validationCtx, {
+        type: 'line',
+        data: {
+            labels: {{ dates| tojson }},
+    datasets: [
+        {
+            label: 'Actual Price',
+            data: {{ actual| tojson }},
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        tension: 0.4,
+        fill: true,
+        borderWidth: 3,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: '#10b981',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2
+                },
+        {
+            label: 'Predicted Price',
+            data: {{ predicted| tojson }},
+        borderColor: '#f59e0b',
+        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        tension: 0.4,
+        fill: true,
+        borderWidth: 3,
+        borderDash: [5, 5],
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: '#f59e0b',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2
+                }
+    ]
+        },
+    options: {
+        responsive: true,
+            maintainAspectRatio: false,
+                interaction: {
+            mode: 'index',
+                intersect: false,
+            },
+        plugins: {
+            legend: {
+                position: 'top',
+                    labels: {
+                    padding: 15,
+                        font: {
+                        size: 13,
+                            weight: 600
+                    },
+                    usePointStyle: true,
+                        pointStyle: 'circle'
+                }
+            },
+            tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                        titleFont: {
+                    size: 14,
+                        weight: 'bold'
+                },
+                bodyFont: {
+                    size: 13
+                },
+                cornerRadius: 8,
+                    callbacks: {
+                    label: function(context) {
+                        return context.dataset.label + ': $' + context.parsed.y.toFixed(2);
+                    }
+                }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: false,
+                    grid: {
+                    color: 'rgba(0, 0, 0, 0.05)',
+                        drawBorder: false
+                },
+                ticks: {
+                    callback: function(value) {
+                        return '$' + value.toFixed(2);
+                    },
+                    font: {
+                        size: 11
+                    }
+                }
+            },
+            x: {
+                grid: {
+                    display: false
+                },
+                ticks: {
+                    maxRotation: 45,
+                        minRotation: 45,
+                            font: {
+                        size: 10
+                    }
+                }
+            }
+        }
+    }
+    });
+
+    // Future Predictions Chart
+    const futureCtx = document.getElementById('futureChart').getContext('2d');
+    const futureChart = new Chart(futureCtx, {
+        type: 'line',
+        data: {
+            labels: {{ future_dates| tojson }},
+    datasets: [{
+        label: 'Predicted Price',
+        data: {{ future_preds| tojson }},
+        borderColor: '#667eea',
+        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        tension: 0.4,
+        fill: true,
+        borderWidth: 3,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        pointBackgroundColor: '#667eea',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2
+            }]
+        },
+    options: {
+        responsive: true,
+            maintainAspectRatio: false,
+                interaction: {
+            mode: 'index',
+                intersect: false,
+            },
+        plugins: {
+            legend: {
+                position: 'top',
+                    labels: {
+                    padding: 15,
+                        font: {
+                        size: 13,
+                            weight: 600
+                    },
+                    usePointStyle: true,
+                        pointStyle: 'circle'
+                }
+            },
+            tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                        titleFont: {
+                    size: 14,
+                        weight: 'bold'
+                },
+                bodyFont: {
+                    size: 13
+                },
+                cornerRadius: 8,
+                    callbacks: {
+                    label: function(context) {
+                        return 'Predicted: $' + context.parsed.y.toFixed(2);
+                    }
+                }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: false,
+                    grid: {
+                    color: 'rgba(0, 0, 0, 0.05)',
+                        drawBorder: false
+                },
+                ticks: {
+                    callback: function(value) {
+                        return '$' + value.toFixed(2);
+                    },
+                    font: {
+                        size: 11
+                    }
+                }
+            },
+            x: {
+                grid: {
+                    display: false
+                },
+                ticks: {
+                    maxRotation: 45,
+                        minRotation: 45,
+                            font: {
+                        size: 10
+                    }
+                }
+            }
+        }
+    }
+    });
+
+    // Download CSV function
+    function downloadCSV() {
+        let csv = 'Date,Type,Price\n';
+
+        // Add actual and predicted data
+        {% for date, a, p in zip(dates, actual, predicted) %}
+        csv += '{{ date }},Actual,{{ a }}\n';
+        csv += '{{ date }},Predicted,{{ p }}\n';
+        {% endfor %}
+
+        // Add future predictions
+        {% for d, p in zip(future_dates, future_preds) %}
+        csv += '{{ d }},Future Prediction,{{ p }}\n';
+        {% endfor %}
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '{{ ticker }}_predictions.csv';
+        a.click();
+    }
+</script>
+{% endif %}
+{% endblock %}

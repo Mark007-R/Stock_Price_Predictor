@@ -1,0 +1,89 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h2 class="card-title text-center mb-3">📊 Prediction Results for {{ ticker }}</h2>
+                <p class="text-center text-muted mb-4">{{ start }} to {{ end }}</p>
+            </div>
+        </div>
+
+        <!-- Model Summary -->
+        {% if summary %}
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h5 class="card-title mb-4">📋 Model Performance Summary</h5>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover text-center align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="font-weight: 700;">Model</th>
+                                <th style="font-weight: 700;">RMSE</th>
+                                <th style="font-weight: 700;">R² Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in summary %}
+                            <tr>
+                                <td><strong>{{ row.Model }}</strong></td>
+                                <td><strong>{{ row.RMSE }}</strong></td>
+                                <td>
+                                    {% set r2_val = row.R2|float %}
+                                    <span
+                                        class="badge {% if r2_val >= 0.9 %}bg-success{% elif r2_val >= 0.7 %}bg-warning{% else %}bg-danger{% endif %}">
+                                        {{ row.R2 }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Predicted vs Actual Plots -->
+        {% if plots %}
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h5 class="card-title mb-4">📈 Predicted vs Actual Prices</h5>
+                <div class="row">
+                    {% for plot in plots %}
+                    <div class="col-md-6 mb-4">
+                        <img src="/{{ plot }}" alt="Prediction Plot" class="img-fluid"
+                            style="border-radius: 12px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);">
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Future Predictions -->
+        {% if future_plots %}
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h5 class="card-title mb-4">🔮 Future Price Forecasts</h5>
+                <div class="row">
+                    {% for future in future_plots %}
+                    <div class="col-md-6 mb-4">
+                        <img src="/{{ future }}" alt="Future Forecast Plot" class="img-fluid"
+                            style="border-radius: 12px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);">
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Back Button -->
+        <div class="text-center mb-4">
+            <a href="/" class="btn btn-primary btn-lg">
+                ← Back to Home
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

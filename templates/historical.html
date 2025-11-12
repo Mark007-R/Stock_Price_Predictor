@@ -1,0 +1,436 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h2 class="card-title text-center mb-3">📉 Historical Stock Analysis</h2>
+                <p class="text-center text-muted mb-4">Analyze historical stock data with advanced technical indicators
+                </p>
+
+                <form method="POST" class="row g-3 mt-3">
+                    <div class="col-md-3">
+                        <label for="hist_ticker" class="form-label">Stock Ticker</label>
+                        <input type="text" name="hist_ticker" id="hist_ticker" class="form-control"
+                            value="{{ request.form.hist_ticker or ticker or 'MSFT' }}" placeholder="e.g., MSFT"
+                            pattern="[A-Za-z]{1,10}" required>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="hist_period" class="form-label">Time Period</label>
+                        <select name="hist_period" id="hist_period" class="form-select">
+                            {% for p in ["1mo", "3mo", "6mo", "1y", "2y", "5y", "10y"] %}
+                            <option value="{{ p }}" {% if (request.form.hist_period or period)==p or (not
+                                request.form.hist_period and p=="1y" ) %}selected{% endif %}>
+                                {{ p }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="hist_interval" class="form-label">Data Interval</label>
+                        <select name="hist_interval" id="hist_interval" class="form-select">
+                            {% for i in ["1d", "1wk", "1mo"] %}
+                            <option value="{{ i }}" {% if (request.form.hist_interval or interval)==i %}selected{% endif
+                                %}>
+                                {{ i }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <strong>📊 Analyze</strong>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if error %}
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <strong>⚠️ Error:</strong> {{ error }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        {% if df and summary %}
+        <!-- Summary Statistics -->
+        <div class="row mb-4">
+            <div class="col-md-3 mb-3">
+                <div class="metric-card">
+                    <div class="metric-label">Current Price</div>
+                    <div class="metric-value">${{ summary.current_price }}</div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="metric-card" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                    <div class="metric-label">Period High</div>
+                    <div class="metric-value">${{ summary.high }}</div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="metric-card" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+                    <div class="metric-label">Period Low</div>
+                    <div class="metric-value">${{ summary.low }}</div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="metric-card"
+                    style="background: linear-gradient(135deg, {% if summary.total_return > 0 %}#10b981, #059669{% else %}#ef4444, #dc2626{% endif %});">
+                    <div class="metric-label">Total Return</div>
+                    <div class="metric-value">{{ summary.total_return }}%</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <div class="metric-card" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
+                    <div class="metric-label">Avg Daily Return</div>
+                    <div class="metric-value" style="font-size: 1.5rem;">{{ summary.avg_return }}%</div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="metric-card" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                    <div class="metric-label">Volatility (σ)</div>
+                    <div class="metric-value" style="font-size: 1.5rem;">{{ summary.volatility }}%</div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="metric-card" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
+                    <div class="metric-label">Avg Volume</div>
+                    <div class="metric-value" style="font-size: 1.3rem;">{{ "{:,}".format(summary.avg_volume) }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Price Chart with Indicators -->
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h5 class="card-title mb-4">📈 Price Chart with Moving Averages</h5>
+                <div style="position: relative; height: 450px;">
+                    <canvas id="priceChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Technical Indicators -->
+        <div class="row mb-4">
+            <div class="col-md-6 mb-3">
+                <div class="card" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">📊 RSI (Relative Strength Index)</h5>
+                        <div style="position: relative; height: 300px;">
+                            <canvas id="rsiChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="card" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+                    <div class="card-body">
+                        <h5 class="card-title mb-4">📉 Volume Analysis</h5>
+                        <div style="position: relative; height: 300px;">
+                            <canvas id="volumeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h5 class="card-title mb-4">📋 Historical Data Table</h5>
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-bordered table-hover table-sm text-center align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                {% for key in df[0].keys() %}
+                                <th>{{ key }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in df %}
+                            <tr>
+                                {% for cell in row.values() %}
+                                <td>{{ cell }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Download Button -->
+        <div class="text-center mb-4">
+            <button class="btn btn-outline-success btn-lg" onclick="downloadHistoricalCSV()">
+                📥 Download Historical Data as CSV
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{% if df %}
+<script>
+    Chart.defaults.font.family = "'Inter', sans-serif";
+
+    const dates = {{ df| map(attribute = 'Date') | list | tojson }};
+    const closePrices = {{ df| map(attribute = 'Close') | list | tojson }};
+    const sma20 = {{ df| map(attribute = 'SMA20') | list | tojson }};
+    const sma50 = {{ df| map(attribute = 'SMA50') | list | tojson }};
+    const rsiValues = {{ df| map(attribute = 'RSI') | list | tojson }};
+    const volumes = {{ df| map(attribute = 'Volume') | list | tojson }};
+
+    // Price Chart with Moving Averages
+    const priceCtx = document.getElementById('priceChart').getContext('2d');
+    new Chart(priceCtx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [
+                {
+                    label: 'Close Price',
+                    data: closePrices,
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    borderWidth: 3,
+                    pointRadius: 3,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#667eea',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2
+                },
+                {
+                    label: 'SMA 20',
+                    data: sma20,
+                    borderColor: '#f59e0b',
+                    tension: 0.4,
+                    fill: false,
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    pointRadius: 0,
+                    pointHoverRadius: 5
+                },
+                {
+                    label: 'SMA 50',
+                    data: sma50,
+                    borderColor: '#ef4444',
+                    tension: 0.4,
+                    fill: false,
+                    borderWidth: 2,
+                    borderDash: [10, 5],
+                    pointRadius: 0,
+                    pointHoverRadius: 5
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 13,
+                            weight: 600
+                        },
+                        usePointStyle: true
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    cornerRadius: 8
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    },
+                    ticks: {
+                        callback: function (value) {
+                            return '$' + value.toFixed(2);
+                        }
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        font: {
+                            size: 10
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // RSI Chart
+    const rsiCtx = document.getElementById('rsiChart').getContext('2d');
+    new Chart(rsiCtx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: 'RSI',
+                data: rsiValues,
+                borderColor: '#8b5cf6',
+                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                tension: 0.4,
+                fill: true,
+                borderWidth: 3,
+                pointRadius: 2,
+                pointHoverRadius: 5,
+                pointBackgroundColor: '#8b5cf6',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    cornerRadius: 8
+                }
+            },
+            scales: {
+                y: {
+                    min: 0,
+                    max: 100,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    },
+                    ticks: {
+                        callback: function (value) {
+                            if (value === 70) return '70 (Overbought)';
+                            if (value === 30) return '30 (Oversold)';
+                            return value;
+                        }
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        font: {
+                            size: 9
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Volume Chart
+    const volumeCtx = document.getElementById('volumeChart').getContext('2d');
+    new Chart(volumeCtx, {
+        type: 'bar',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: 'Volume',
+                data: volumes,
+                backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                borderColor: '#3b82f6',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    cornerRadius: 8,
+                    callbacks: {
+                        label: function (context) {
+                            return 'Volume: ' + (context.parsed.y / 1000000).toFixed(2) + 'M';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    },
+                    ticks: {
+                        callback: function (value) {
+                            return (value / 1000000).toFixed(1) + 'M';
+                        }
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        font: {
+                            size: 9
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Download CSV function
+    function downloadHistoricalCSV() {
+        let csv = 'Date,Open,High,Low,Close,Volume,SMA20,SMA50,EMA20,RSI\n';
+
+        {% for row in df %}
+        csv += '{{ row.Date }},{{ row.Open }},{{ row.High }},{{ row.Low }},{{ row.Close }},{{ row.Volume }},{{ row.SMA20 }},{{ row.SMA50 }},{{ row.EMA20 }},{{ row.RSI }}\n';
+        {% endfor %}
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '{{ ticker }}_historical_data.csv';
+        a.click();
+    }
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,368 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h2 class="card-title text-center mb-3">📊 Stock Correlation Dashboard</h2>
+                <p class="text-center text-muted mb-4">Analyze correlations between multiple stocks to discover trading
+                    patterns</p>
+
+                <form method="POST" class="row g-3 mt-3">
+                    <div class="col-md-4">
+                        <label for="tickers" class="form-label">Stock Tickers (comma-separated)</label>
+                        <input type="text" name="tickers" id="tickers" class="form-control"
+                            value="{{ request.form.tickers or 'AAPL, MSFT, GOOGL' }}"
+                            placeholder="e.g., AAPL, MSFT, GOOGL" required>
+                        <small class="form-text">Enter 2-10 tickers separated by commas</small>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="start_date" class="form-label">Start Date</label>
+                        <input type="date" name="start_date" id="start_date" class="form-control"
+                            value="{{ request.form.start_date or start_date or '2021-01-01' }}">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="end_date" class="form-label">End Date</label>
+                        <input type="date" name="end_date" id="end_date" class="form-control"
+                            value="{{ request.form.end_date or end_date }}">
+                    </div>
+
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <strong>📊 Analyze</strong>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if error %}
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <strong>⚠️ Error:</strong> {{ error }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        {% if corr_matrix %}
+        <!-- Stock Statistics Cards -->
+        {% if stats %}
+        <div class="row mb-4">
+            {% for ticker, data in stats.items() %}
+            <div class="col-md-4 mb-3">
+                <div class="card"
+                    style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 2px solid rgba(102, 126, 234, 0.2);">
+                    <div class="card-body">
+                        <h5 class="card-title" style="color: #667eea; font-weight: 700;">{{ ticker }}</h5>
+                        <div class="row mt-3">
+                            <div class="col-6">
+                                <small class="text-muted d-block mb-1">Current Price</small>
+                                <p class="mb-0" style="font-size: 1.25rem; font-weight: 700;">${{ data.current_price }}
+                                </p>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted d-block mb-1">Return</small>
+                                <p class="mb-0 {% if data.price_change > 0 %}text-success{% else %}text-danger{% endif %}"
+                                    style="font-size: 1.25rem; font-weight: 700;">
+                                    {{ data.price_change }}%
+                                </p>
+                            </div>
+                        </div>
+                        <div class="row mt-3">
+                            <div class="col-6">
+                                <small class="text-muted d-block mb-1">Volatility</small>
+                                <p class="mb-0" style="font-weight: 600;">{{ data.volatility }}%</p>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted d-block mb-1">Avg Price</small>
+                                <p class="mb-0" style="font-weight: 600;">${{ data.mean_price }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Top Correlations -->
+        {% if corr_pairs %}
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h5 class="card-title mb-4">🔗 Top Correlation Pairs</h5>
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="font-weight: 700;">Stock 1</th>
+                                <th style="font-weight: 700;">Stock 2</th>
+                                <th style="font-weight: 700;">Correlation</th>
+                                <th style="font-weight: 700;">Strength</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pair in corr_pairs %}
+                            <tr>
+                                <td><strong style="color: #667eea;">{{ pair.ticker1 }}</strong></td>
+                                <td><strong style="color: #764ba2;">{{ pair.ticker2 }}</strong></td>
+                                <td><strong>{{ pair.correlation }}</strong></td>
+                                <td>
+                                    {% set abs_corr = pair.correlation|abs %}
+                                    {% if abs_corr >= 0.8 %}
+                                    <span class="badge bg-success">Very Strong</span>
+                                    {% elif abs_corr >= 0.6 %}
+                                    <span class="badge"
+                                        style="background: linear-gradient(135deg, #3b82f6, #2563eb);">Strong</span>
+                                    {% elif abs_corr >= 0.4 %}
+                                    <span class="badge bg-warning">Moderate</span>
+                                    {% else %}
+                                    <span class="badge" style="background: #6b7280;">Weak</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Correlation Heatmap -->
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h5 class="card-title mb-3">🌡️ Correlation Heatmap</h5>
+                <p class="text-muted mb-4">Values range from -1 (negative correlation) to +1 (positive correlation)</p>
+                <div class="table-responsive">
+                    <table class="table table-bordered text-center align-middle" style="font-size: 0.95rem;">
+                        <thead>
+                            <tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                                <th scope="col" style="color: white; font-weight: 700;"></th>
+                                {% for label in labels %}
+                                <th scope="col" style="color: white; font-weight: 700;">{{ label }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for i in range(corr_matrix|length) %}
+                            <tr>
+                                <th scope="row"
+                                    style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: 700;">
+                                    {{ labels[i] }}
+                                </th>
+                                {% for j in range(corr_matrix[i]|length) %}
+                                {% set val = corr_matrix[i][j] %}
+                                {% if val >= 0.8 %}
+                                {% set bg_color = 'background: linear-gradient(135deg, #10b981, #059669);' %}
+                                {% set text_color = 'color: white; font-weight: 700;' %}
+                                {% elif val >= 0.6 %}
+                                {% set bg_color = 'background: linear-gradient(135deg, #34d399, #10b981);' %}
+                                {% set text_color = 'color: white; font-weight: 600;' %}
+                                {% elif val >= 0.4 %}
+                                {% set bg_color = 'background: linear-gradient(135deg, #6ee7b7, #34d399);' %}
+                                {% set text_color = 'color: #065f46; font-weight: 600;' %}
+                                {% elif val >= 0.2 %}
+                                {% set bg_color = 'background: linear-gradient(135deg, #a7f3d0, #6ee7b7);' %}
+                                {% set text_color = 'color: #065f46;' %}
+                                {% elif val >= 0 %}
+                                {% set bg_color = 'background: linear-gradient(135deg, #d1fae5, #a7f3d0);' %}
+                                {% set text_color = 'color: #065f46;' %}
+                                {% elif val >= -0.2 %}
+                                {% set bg_color = 'background: linear-gradient(135deg, #fed7aa, #fdba74);' %}
+                                {% set text_color = 'color: #7c2d12;' %}
+                                {% elif val >= -0.4 %}
+                                {% set bg_color = 'background: linear-gradient(135deg, #fdba74, #fb923c);' %}
+                                {% set text_color = 'color: white; font-weight: 600;' %}
+                                {% elif val >= -0.6 %}
+                                {% set bg_color = 'background: linear-gradient(135deg, #fb923c, #f97316);' %}
+                                {% set text_color = 'color: white; font-weight: 600;' %}
+                                {% else %}
+                                {% set bg_color = 'background: linear-gradient(135deg, #ef4444, #dc2626);' %}
+                                {% set text_color = 'color: white; font-weight: 700;' %}
+                                {% endif %}
+                                <td style="{{ bg_color }} {{ text_color }} padding: 1rem;">
+                                    {{ val }}
+                                </td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4 p-3"
+                    style="background: linear-gradient(135deg, #f3f4f6, #e5e7eb); border-radius: 10px;">
+                    <div class="d-flex flex-wrap justify-content-center gap-3">
+                        <span class="badge"
+                            style="background: linear-gradient(135deg, #10b981, #059669); padding: 0.6rem 1rem;">
+                            Strong Positive (0.8-1.0)
+                        </span>
+                        <span class="badge"
+                            style="background: linear-gradient(135deg, #6ee7b7, #34d399); color: #065f46; padding: 0.6rem 1rem;">
+                            Moderate Positive (0.4-0.8)
+                        </span>
+                        <span class="badge"
+                            style="background: linear-gradient(135deg, #d1fae5, #a7f3d0); color: #065f46; padding: 0.6rem 1rem;">
+                            Weak (0-0.4)
+                        </span>
+                        <span class="badge"
+                            style="background: linear-gradient(135deg, #fdba74, #fb923c); padding: 0.6rem 1rem;">
+                            Moderate Negative (-0.4-0)
+                        </span>
+                        <span class="badge"
+                            style="background: linear-gradient(135deg, #ef4444, #dc2626); padding: 0.6rem 1rem;">
+                            Strong Negative (-1.0--0.4)
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Correlation Visualization -->
+        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+            <div class="card-body">
+                <h5 class="card-title mb-4">📈 Correlation Strength Visualization</h5>
+                <div style="position: relative; height: 400px;">
+                    <canvas id="correlationChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Download Button -->
+        <div class="text-center mb-4">
+            <button class="btn btn-outline-success btn-lg" onclick="downloadCorrelationCSV()">
+                📥 Download Correlation Matrix as CSV
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{% if corr_matrix %}
+<script>
+    Chart.defaults.font.family = "'Inter', sans-serif";
+
+    const labels = {{ labels| tojson }};
+    const corrMatrix = {{ corr_matrix| tojson }};
+
+    // Create a bar chart showing correlation strengths
+    const corrCtx = document.getElementById('correlationChart').getContext('2d');
+
+    // Prepare data for visualization
+    const correlationData = [];
+    const correlationLabels = [];
+
+    for (let i = 0; i < labels.length; i++) {
+        for (let j = i + 1; j < labels.length; j++) {
+            correlationLabels.push(labels[i] + ' vs ' + labels[j]);
+            correlationData.push(corrMatrix[i][j]);
+        }
+    }
+
+    new Chart(corrCtx, {
+        type: 'bar',
+        data: {
+            labels: correlationLabels,
+            datasets: [{
+                label: 'Correlation Coefficient',
+                data: correlationData,
+                backgroundColor: correlationData.map(val => {
+                    if (val >= 0.8) return 'rgba(16, 185, 129, 0.8)';
+                    if (val >= 0.6) return 'rgba(52, 211, 153, 0.8)';
+                    if (val >= 0.4) return 'rgba(110, 231, 183, 0.8)';
+                    if (val >= 0.2) return 'rgba(167, 243, 208, 0.8)';
+                    if (val >= 0) return 'rgba(209, 250, 229, 0.8)';
+                    if (val >= -0.2) return 'rgba(254, 215, 170, 0.8)';
+                    if (val >= -0.4) return 'rgba(253, 186, 116, 0.8)';
+                    if (val >= -0.6) return 'rgba(251, 146, 60, 0.8)';
+                    return 'rgba(239, 68, 68, 0.8)';
+                }),
+                borderColor: correlationData.map(val => {
+                    if (val >= 0.6) return '#10b981';
+                    if (val >= 0.2) return '#34d399';
+                    if (val >= -0.2) return '#fbbf24';
+                    if (val >= -0.6) return '#fb923c';
+                    return '#ef4444';
+                }),
+                borderWidth: 2,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    cornerRadius: 8,
+                    callbacks: {
+                        label: function (context) {
+                            const val = context.parsed.y;
+                            let strength = '';
+                            if (Math.abs(val) >= 0.8) strength = 'Very Strong';
+                            else if (Math.abs(val) >= 0.6) strength = 'Strong';
+                            else if (Math.abs(val) >= 0.4) strength = 'Moderate';
+                            else strength = 'Weak';
+                            return 'Correlation: ' + val.toFixed(3) + ' (' + strength + ')';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    min: -1,
+                    max: 1,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    },
+                    ticks: {
+                        callback: function (value) {
+                            return value.toFixed(1);
+                        }
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        font: {
+                            size: 10
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Download CSV function
+    function downloadCorrelationCSV() {
+        let csv = 'Stock,' + labels.join(',') + '\n';
+
+        for (let i = 0; i < labels.length; i++) {
+            csv += labels[i];
+            for (let j = 0; j < corrMatrix[i].length; j++) {
+                csv += ',' + corrMatrix[i][j];
+            }
+            csv += '\n';
+        }
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'stock_correlation_matrix.csv';
+        a.click();
+    }
+</script>
+{% endif %}
+{% endblock %}
