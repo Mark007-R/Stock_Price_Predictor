@@ -1,0 +1,47 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.env
+.venv/
+venv/
+ENV/
+env/
+*.log
+
+# --- IDEs & Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS generated files ---
+.DS_Store
+Thumbs.db
+
+# --- Environment / Secrets ---
+.env
+*.key
+*.pem
+config.json
+
+# --- Jupyter / Notebooks ---
+.ipynb_checkpoints/
+
+# --- Flask / Django / Web projects ---
+instance/
+*.sqlite3
+*.db
+
+# --- Caches ---
+.cache/
+pytest_c_
+.mypy_cache/
+__pycache__

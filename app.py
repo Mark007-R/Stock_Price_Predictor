@@ -2,11 +2,12 @@ from flask import Flask, render_template
 from predictor import predict_bp
 from historical import historical_bp
 from correlation import correlation_bp
-
+import os
+load_dotenv() 
 app = Flask(__name__)
 
 # Secret key for session management
-app.config['SECRET_KEY'] = 'your-secret-key-here-change-in-production'
+app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET_KEY")
 
 # Register Blueprints
 app.register_blueprint(predict_bp)

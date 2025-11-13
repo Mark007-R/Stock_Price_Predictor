@@ -5,12 +5,14 @@ import time
 from functools import lru_cache
 import requests
 import warnings
+import os
+load_dotenv()
 warnings.filterwarnings('ignore')
 
 historical_bp = Blueprint('historical', __name__)
 
 # Alpha Vantage API Key
-ALPHA_VANTAGE_API_KEY = "UV0H8FN0FJWS5WVK"
+ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 
 # Cache historical data to prevent repeated API calls
 @lru_cache(maxsize=50)
