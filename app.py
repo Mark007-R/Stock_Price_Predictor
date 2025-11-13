@@ -3,6 +3,7 @@ from predictor import predict_bp
 from historical import historical_bp
 from correlation import correlation_bp
 import os
+from dotenv import load_dotenv
 load_dotenv() 
 app = Flask(__name__)
 

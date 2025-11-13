@@ -5,6 +5,7 @@ import time
 from functools import lru_cache
 import requests
 import warnings
+from dotenv import load_dotenv
 import os
 load_dotenv()
 warnings.filterwarnings('ignore')
