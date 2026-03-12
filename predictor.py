@@ -1,7 +1,7 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, jsonify
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
@@ -13,6 +13,8 @@ import yfinance as yf
 import warnings
 import logging
 import time
+import threading
+import uuid
 
 warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.INFO)
@@ -23,7 +25,11 @@ predict_bp = Blueprint('predict', __name__)
 _cache = {}
 CACHE_EXPIRY = 3600
 
-def fetch_stock_data(ticker, period="1y"):  # 1 year is enough, faster to train
+# Job store: job_id -> { "status": "running"|"done"|"error", "result": {}, "error": "" }
+_jobs = {}
+
+
+def fetch_stock_data(ticker, period="1y"):
     cache_key = f"{ticker}_{period}"
     current_time = time.time()
     if cache_key in _cache:
@@ -46,8 +52,8 @@ def fetch_stock_data(ticker, period="1y"):  # 1 year is enough, faster to train
     logger.info(f"Fetched {len(df)} days of data for {ticker}")
     return df
 
+
 def create_lstm_model(input_shape):
-    # Smaller/faster model: 1 LSTM layer, fewer units
     model = Sequential([
         LSTM(32, return_sequences=False, input_shape=input_shape),
         Dropout(0.2),
@@ -57,30 +63,14 @@ def create_lstm_model(input_shape):
     model.compile(optimizer='adam', loss='mean_squared_error')
     return model
 
-@predict_bp.route('/predict', methods=['GET', 'POST'])
-def predict():
-    if request.method == 'GET':
-        return render_template("home.html")
 
-    ticker = request.form.get("ticker", "AAPL").upper().strip()
-    if not ticker or len(ticker) > 10 or not ticker.replace('.', '').replace('-', '').isalnum():
-        return render_template("home.html",
-            error="Please enter a valid stock ticker (e.g., AAPL, MSFT, GOOGL)")
-
+def run_prediction(job_id, ticker, num_days):
+    """Runs in a background thread. Stores result in _jobs when done."""
     try:
-        num_days = int(request.form.get("num_days", 30))
-        if num_days < 1 or num_days > 365:
-            return render_template("home.html", error="Number of days must be between 1 and 365")
-    except ValueError:
-        return render_template("home.html", error="Invalid number of days")
-
-    try:
-        logger.info(f"Starting prediction for {ticker}")
         data = fetch_stock_data(ticker, period="1y")
 
         if len(data) < 60:
-            return render_template("home.html",
-                error=f"Insufficient data for {ticker}: {len(data)} days found, need 60+.")
+            raise Exception(f"Insufficient data for {ticker}: {len(data)} days found, need 60+.")
 
         data = data.dropna()
         close_prices = data["Close"].values.astype(float).reshape(-1, 1)
@@ -88,41 +78,37 @@ def predict():
         scaler = MinMaxScaler(feature_range=(0, 1))
         scaled_data = scaler.fit_transform(close_prices)
 
-        # Smaller time_step = fewer sequences = faster training
         time_step = 30
 
-        def create_dataset(arr, time_step):
+        def create_dataset(arr, ts):
             X, y = [], []
-            for i in range(len(arr) - time_step - 1):
-                X.append(arr[i:(i + time_step), 0])
-                y.append(arr[i + time_step, 0])
+            for i in range(len(arr) - ts - 1):
+                X.append(arr[i:(i + ts), 0])
+                y.append(arr[i + ts, 0])
             return np.array(X, dtype=np.float32), np.array(y, dtype=np.float32)
 
         X, y = create_dataset(scaled_data, time_step)
 
         if len(X) < 30:
-            return render_template("home.html",
-                error=f"Not enough data to train. Found {len(data)} days.")
+            raise Exception(f"Not enough data to train. Found {len(data)} days.")
 
         X = X.reshape(X.shape[0], X.shape[1], 1)
         split = int(len(X) * 0.8)
         X_train, y_train = X[:split], y[:split]
         X_test,  y_test  = X[split:], y[split:]
 
-        logger.info(f"Training LSTM model on {len(X_train)} samples...")
+        logger.info(f"[{job_id}] Training on {len(X_train)} samples...")
         model = create_lstm_model((time_step, 1))
-
-        # Aggressive early stopping + fewer epochs = fast
         early_stop = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
         model.fit(
             X_train, y_train,
-            epochs=15,          # max 15 epochs, usually stops at 5-8
-            batch_size=16,      # smaller batch = faster per epoch
+            epochs=15,
+            batch_size=16,
             verbose=0,
             validation_split=0.1,
             callbacks=[early_stop]
         )
-        logger.info("Training complete.")
+        logger.info(f"[{job_id}] Training complete.")
 
         predictions   = scaler.inverse_transform(model.predict(X_test, verbose=0).reshape(-1, 1))
         y_test_actual = scaler.inverse_transform(y_test.reshape(-1, 1))
@@ -154,26 +140,79 @@ def predict():
         else:
             confidence, confidence_score = "Low", 55
 
-        logger.info(f"Prediction complete for {ticker}.")
-
-        return render_template("home.html",
-            ticker=ticker,
-            current_price=round(current_price, 2),
-            last_date=data.index[-1].strftime('%Y-%m-%d'),
-            actual=[round(float(v), 2) for v in y_test_actual.flatten()],
-            predicted=[round(float(v), 2) for v in predictions.flatten()],
-            dates=data.index[-len(y_test_actual):].strftime('%Y-%m-%d').tolist(),
-            future_preds=[round(float(v), 2) for v in future_preds_inv.flatten()],
-            future_dates=[d.strftime('%Y-%m-%d') for d in future_dates],
-            rmse=round(rmse, 2),
-            mae=round(mae, 2),
-            mape=round(mape, 2),
-            confidence=confidence,
-            confidence_score=confidence_score,
-            data_points=len(data),
-            volatility=round(volatility, 2)
-        )
+        _jobs[job_id] = {
+            "status": "done",
+            "result": {
+                "ticker":           ticker,
+                "current_price":    round(current_price, 2),
+                "last_date":        data.index[-1].strftime('%Y-%m-%d'),
+                "actual":           [round(float(v), 2) for v in y_test_actual.flatten()],
+                "predicted":        [round(float(v), 2) for v in predictions.flatten()],
+                "dates":            data.index[-len(y_test_actual):].strftime('%Y-%m-%d').tolist(),
+                "future_preds":     [round(float(v), 2) for v in future_preds_inv.flatten()],
+                "future_dates":     [d.strftime('%Y-%m-%d') for d in future_dates],
+                "rmse":             round(rmse, 2),
+                "mae":              round(mae, 2),
+                "mape":             round(mape, 2),
+                "confidence":       confidence,
+                "confidence_score": confidence_score,
+                "data_points":      len(data),
+                "volatility":       round(volatility, 2),
+            }
+        }
+        logger.info(f"[{job_id}] Job complete.")
 
     except Exception as e:
-        logger.error(f"Prediction error: {str(e)}", exc_info=True)
-        return render_template("home.html", error=f"Error: {str(e)}")
+        logger.error(f"[{job_id}] Failed: {str(e)}", exc_info=True)
+        _jobs[job_id] = {"status": "error", "error": str(e)}
+
+
+# ── Routes ─────────────────────────────────────────────────────────────────────
+
+@predict_bp.route('/predict', methods=['GET', 'POST'])
+def predict():
+    if request.method == 'GET':
+        return render_template("home.html")
+
+    ticker = request.form.get("ticker", "AAPL").upper().strip()
+    if not ticker or len(ticker) > 10 or not ticker.replace('.', '').replace('-', '').isalnum():
+        return render_template("home.html",
+            error="Please enter a valid stock ticker (e.g., AAPL, MSFT, GOOGL)")
+
+    try:
+        num_days = int(request.form.get("num_days", 30))
+        if num_days < 1 or num_days > 365:
+            return render_template("home.html", error="Number of days must be between 1 and 365")
+    except ValueError:
+        return render_template("home.html", error="Invalid number of days")
+
+    # Kick off background job, return loading page immediately
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {"status": "running"}
+    thread = threading.Thread(target=run_prediction, args=(job_id, ticker, num_days), daemon=True)
+    thread.start()
+
+    return render_template("loading.html", job_id=job_id, ticker=ticker)
+
+
+@predict_bp.route('/predict/status/<job_id>')
+def predict_status(job_id):
+    """Polled every 3 s by loading.html"""
+    job = _jobs.get(job_id)
+    if not job:
+        return jsonify({"status": "error", "error": "Job not found"}), 404
+    # Don't expose full result in status — just the status flag (and error if any)
+    if job["status"] == "error":
+        return jsonify({"status": "error", "error": job["error"]})
+    return jsonify({"status": job["status"]})
+
+
+@predict_bp.route('/predict/result/<job_id>')
+def predict_result(job_id):
+    """Called by loading.html when status == done"""
+    job = _jobs.get(job_id)
+    if not job or job["status"] != "done":
+        return render_template("home.html", error="Result not ready or job not found.")
+    result = job["result"]
+    _jobs.pop(job_id, None)  # free memory
+    return render_template("home.html", **result)
