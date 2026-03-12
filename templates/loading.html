@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Predicting {{ ticker }}...</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .card { background: #1a1d27; border: 1px solid #2a2d3e; border-radius: 16px; padding: 48px 56px; text-align: center; max-width: 440px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+        .spinner { width: 64px; height: 64px; border: 5px solid #2a2d3e; border-top-color: #6c63ff; border-radius: 50%; animation: spin 0.9s linear infinite; margin: 0 auto 28px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        h2 { font-size: 1.4rem; font-weight: 600; margin-bottom: 10px; color: #fff; }
+        p { font-size: 0.95rem; color: #8b8fa8; line-height: 1.6; }
+        .ticker-badge { display: inline-block; background: #6c63ff22; color: #6c63ff; border: 1px solid #6c63ff44; padding: 4px 14px; border-radius: 20px; font-weight: 700; font-size: 1rem; margin-bottom: 20px; letter-spacing: 1px; }
+        .steps { margin-top: 28px; text-align: left; display: flex; flex-direction: column; gap: 10px; }
+        .step { display: flex; align-items: center; gap: 12px; font-size: 0.88rem; color: #6b6f84; transition: color 0.3s; }
+        .step.active { color: #c0c4d8; }
+        .step.done { color: #4caf7d; }
+        .step-dot { width: 8px; height: 8px; border-radius: 50%; background: #2a2d3e; flex-shrink: 0; transition: background 0.3s; }
+        .step.active .step-dot { background: #6c63ff; }
+        .step.done .step-dot { background: #4caf7d; }
+        .error-box { display: none; margin-top: 20px; background: #ff4d4d18; border: 1px solid #ff4d4d44; border-radius: 8px; padding: 14px; color: #ff7070; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <div class="spinner" id="spinner"></div>
+    <div class="ticker-badge">{{ ticker }}</div>
+    <h2>Running Prediction</h2>
+    <p>Training the LSTM model on 2 years of data.<br>This takes 30–90 seconds.</p>
+    <div class="steps">
+        <div class="step active" id="step1"><div class="step-dot"></div> Fetching historical data</div>
+        <div class="step" id="step2"><div class="step-dot"></div> Preparing training sequences</div>
+        <div class="step" id="step3"><div class="step-dot"></div> Training LSTM model</div>
+        <div class="step" id="step4"><div class="step-dot"></div> Generating future predictions</div>
+    </div>
+    <div class="error-box" id="errorBox"></div>
+</div>
+<script>
+    const jobId = "{{ job_id }}";
+    let elapsed = 0;
+    const steps = ["step1","step2","step3","step4"];
+    const stepTimings = [3, 10, 20, 50];
+    function advanceSteps() {
+        for (let i = 0; i < steps.length; i++) {
+            const el = document.getElementById(steps[i]);
+            if (elapsed >= stepTimings[i]) {
+                if (i > 0) document.getElementById(steps[i-1]).className = "step done";
+                el.className = "step active";
+            }
+        }
+    }
+    function poll() {
+        fetch(`/predict/status/${jobId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === "done") {
+                    steps.forEach(s => document.getElementById(s).className = "step done");
+                    window.location.href = `/predict/result/${jobId}`;
+                } else if (data.status === "error") {
+                    document.getElementById("spinner").style.borderTopColor = "#ff4d4d";
+                    const box = document.getElementById("errorBox");
+                    box.style.display = "block";
+                    box.textContent = "Error: " + data.error;
+                } else {
+                    elapsed += 3;
+                    advanceSteps();
+                    setTimeout(poll, 3000);
+                }
+            })
+            .catch(() => { elapsed += 3; advanceSteps(); setTimeout(poll, 3000); });
+    }
+    setTimeout(poll, 3000);
+</script>
+</body>
+</html>
