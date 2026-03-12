@@ -140,24 +140,37 @@ def run_prediction(job_id, ticker, num_days):
         else:
             confidence, confidence_score = "Low", 55
 
+        # Build plain Python lists
+        actual_list       = [round(float(v), 2) for v in y_test_actual.flatten()]
+        predicted_list    = [round(float(v), 2) for v in predictions.flatten()]
+        dates_list        = data.index[-len(y_test_actual):].strftime('%Y-%m-%d').tolist()
+        future_preds_list = [round(float(v), 2) for v in future_preds_inv.flatten()]
+        future_dates_list = [d.strftime('%Y-%m-%d') for d in future_dates]
+
+        # Pre-zip for Jinja2 (Jinja2 doesn't have zip built-in)
+        actual_predicted_zip = list(zip(dates_list, actual_list, predicted_list))
+        future_zip           = list(zip(future_dates_list, future_preds_list))
+
         _jobs[job_id] = {
             "status": "done",
             "result": {
-                "ticker":           ticker,
-                "current_price":    round(current_price, 2),
-                "last_date":        data.index[-1].strftime('%Y-%m-%d'),
-                "actual":           [round(float(v), 2) for v in y_test_actual.flatten()],
-                "predicted":        [round(float(v), 2) for v in predictions.flatten()],
-                "dates":            data.index[-len(y_test_actual):].strftime('%Y-%m-%d').tolist(),
-                "future_preds":     [round(float(v), 2) for v in future_preds_inv.flatten()],
-                "future_dates":     [d.strftime('%Y-%m-%d') for d in future_dates],
-                "rmse":             round(rmse, 2),
-                "mae":              round(mae, 2),
-                "mape":             round(mape, 2),
-                "confidence":       confidence,
-                "confidence_score": confidence_score,
-                "data_points":      len(data),
-                "volatility":       round(volatility, 2),
+                "ticker":                ticker,
+                "current_price":         round(current_price, 2),
+                "last_date":             data.index[-1].strftime('%Y-%m-%d'),
+                "actual":                actual_list,
+                "predicted":             predicted_list,
+                "dates":                 dates_list,
+                "future_preds":          future_preds_list,
+                "future_dates":          future_dates_list,
+                "actual_predicted_zip":  actual_predicted_zip,
+                "future_zip":            future_zip,
+                "rmse":                  round(rmse, 2),
+                "mae":                   round(mae, 2),
+                "mape":                  round(mape, 2),
+                "confidence":            confidence,
+                "confidence_score":      confidence_score,
+                "data_points":           len(data),
+                "volatility":            round(volatility, 2),
             }
         }
         logger.info(f"[{job_id}] Job complete.")
@@ -197,11 +210,10 @@ def predict():
 
 @predict_bp.route('/predict/status/<job_id>')
 def predict_status(job_id):
-    """Polled every 3 s by loading.html"""
+    """Polled every 3s by loading.html"""
     job = _jobs.get(job_id)
     if not job:
         return jsonify({"status": "error", "error": "Job not found"}), 404
-    # Don't expose full result in status — just the status flag (and error if any)
     if job["status"] == "error":
         return jsonify({"status": "error", "error": job["error"]})
     return jsonify({"status": job["status"]})
