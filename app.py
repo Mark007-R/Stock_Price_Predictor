@@ -10,6 +10,9 @@ load_dotenv()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET_KEY", "default-secret-key-change-in-production")
 
+# Make Python's zip available in all Jinja2 templates
+app.jinja_env.globals.update(zip=zip)
+
 # Register Blueprints
 app.register_blueprint(predict_bp)
 app.register_blueprint(historical_bp)
@@ -32,6 +35,4 @@ def server_error(e):
     return render_template("home.html", error="Internal server error. Please try again."), 500
 
 if __name__ == "__main__":
-    # use_reloader=False → stops Werkzeug killing background threads mid-training
-    # threaded=True      → allows /predict/status polls while training runs
     app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False, threaded=True)
