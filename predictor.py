@@ -1,7 +1,7 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request
 from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
@@ -13,8 +13,6 @@ import yfinance as yf
 import warnings
 import logging
 import time
-import threading
-import uuid
 
 warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.INFO)
@@ -22,14 +20,8 @@ logger = logging.getLogger(__name__)
 
 predict_bp = Blueprint('predict', __name__)
 
-# Data cache
 _cache = {}
 CACHE_EXPIRY = 3600
-
-# Job store: job_id -> { status, result, error }
-_jobs = {}
-
-# ── Data fetching ──────────────────────────────────────────────────────────────
 
 def fetch_stock_data(ticker, period="2y"):
     cache_key = f"{ticker}_{period}"
@@ -61,8 +53,6 @@ def fetch_stock_data(ticker, period="2y"):
     logger.info(f"Successfully fetched {len(df)} days of data for {ticker}")
     return df
 
-# ── Model ──────────────────────────────────────────────────────────────────────
-
 def create_lstm_model(input_shape):
     model = Sequential([
         LSTM(100, return_sequences=True, input_shape=input_shape),
@@ -77,24 +67,42 @@ def create_lstm_model(input_shape):
     model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae'])
     return model
 
-# ── Background worker ──────────────────────────────────────────────────────────
+@predict_bp.route('/predict', methods=['GET', 'POST'])
+def predict():
+    if request.method == 'GET':
+        return render_template("home.html")
 
-def run_prediction(job_id, ticker, num_days):
+    ticker = request.form.get("ticker", "AAPL").upper().strip()
+
+    if not ticker or len(ticker) > 10 or not ticker.replace('.', '').replace('-', '').isalnum():
+        return render_template("home.html",
+            error="Please enter a valid stock ticker (e.g., AAPL, MSFT, GOOGL)")
+
     try:
-        _jobs[job_id]['status'] = 'running'
+        num_days = int(request.form.get("num_days", 30))
+        if num_days < 1 or num_days > 365:
+            return render_template("home.html",
+                error="Number of days must be between 1 and 365")
+    except ValueError:
+        return render_template("home.html", error="Invalid number of days")
 
+    try:
+        logger.info(f"Starting prediction for {ticker}")
         data = fetch_stock_data(ticker, period="2y")
 
         if len(data) < 100:
-            raise Exception(f"Insufficient historical data for {ticker}. Found {len(data)} days, need at least 100.")
+            return render_template("home.html",
+                error=f"Insufficient historical data for {ticker}. Found {len(data)} days, need at least 100.")
 
         data = data.dropna()
+
+        # Extract close as clean numpy array
         close_prices = data["Close"].values.astype(float).reshape(-1, 1)
 
         scaler = MinMaxScaler(feature_range=(0, 1))
         scaled_data = scaler.fit_transform(close_prices)
 
-        def create_dataset(arr, time_step):
+        def create_dataset(arr, time_step=60):
             X, y = [], []
             for i in range(len(arr) - time_step - 1):
                 X.append(arr[i:(i + time_step), 0])
@@ -105,14 +113,16 @@ def run_prediction(job_id, ticker, num_days):
         X, y = create_dataset(scaled_data, time_step)
 
         if len(X) < 50:
-            raise Exception(f"Not enough data to train the model for {ticker}.")
+            return render_template("home.html",
+                error=f"Not enough data to train model. Found: {len(data)} days.")
 
         X = X.reshape(X.shape[0], X.shape[1], 1)
+
         split = int(len(X) * 0.8)
         X_train, y_train = X[:split], y[:split]
         X_test,  y_test  = X[split:], y[split:]
 
-        logger.info(f"[{job_id}] Training LSTM on {len(X_train)} samples...")
+        logger.info(f"Training LSTM model on {len(X_train)} samples...")
         model = create_lstm_model((X_train.shape[1], 1))
         early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
         history = model.fit(
@@ -123,16 +133,19 @@ def run_prediction(job_id, ticker, num_days):
             validation_split=0.1,
             callbacks=[early_stop]
         )
-        logger.info(f"[{job_id}] Training done. Loss: {history.history['loss'][-1]:.6f}")
+        logger.info(f"Training done. Final loss: {history.history['loss'][-1]:.6f}")
 
+        # Test predictions
         predictions   = scaler.inverse_transform(model.predict(X_test, verbose=0).reshape(-1, 1))
         y_test_actual = scaler.inverse_transform(y_test.reshape(-1, 1))
 
+        # Metrics as plain Python floats
         mse  = float(np.mean((predictions - y_test_actual) ** 2))
         rmse = float(np.sqrt(mse))
         mae  = float(np.mean(np.abs(predictions - y_test_actual)))
         mape = float(np.mean(np.abs((y_test_actual - predictions) / (y_test_actual + 1e-8))) * 100)
 
+        # Future predictions
         last_seq = scaled_data[-time_step:].reshape(1, time_step, 1).astype(np.float32)
         future_scaled = []
         for _ in range(num_days):
@@ -156,15 +169,24 @@ def run_prediction(job_id, ticker, num_days):
         else:
             confidence, confidence_score = "Low", 55
 
-        _jobs[job_id]['result'] = dict(
+        # All template values as plain Python lists/floats
+        actual_list       = [round(float(v), 2) for v in y_test_actual.flatten()]
+        predicted_list    = [round(float(v), 2) for v in predictions.flatten()]
+        future_preds_list = [round(float(v), 2) for v in future_preds_inv.flatten()]
+        dates_list        = data.index[-len(y_test_actual):].strftime('%Y-%m-%d').tolist()
+        future_dates_list = [d.strftime('%Y-%m-%d') for d in future_dates]
+
+        logger.info(f"Prediction complete for {ticker}. Returning {len(future_preds_list)} future points.")
+
+        return render_template("home.html",
             ticker=ticker,
             current_price=round(current_price, 2),
             last_date=last_date,
-            actual=[round(float(v), 2) for v in y_test_actual.flatten()],
-            predicted=[round(float(v), 2) for v in predictions.flatten()],
-            dates=data.index[-len(y_test_actual):].strftime('%Y-%m-%d').tolist(),
-            future_preds=[round(float(v), 2) for v in future_preds_inv.flatten()],
-            future_dates=[d.strftime('%Y-%m-%d') for d in future_dates],
+            actual=actual_list,
+            predicted=predicted_list,
+            dates=dates_list,
+            future_preds=future_preds_list,
+            future_dates=future_dates_list,
             rmse=round(rmse, 2),
             mae=round(mae, 2),
             mape=round(mape, 2),
@@ -173,59 +195,7 @@ def run_prediction(job_id, ticker, num_days):
             data_points=len(data),
             volatility=round(volatility, 2)
         )
-        _jobs[job_id]['status'] = 'done'
-        logger.info(f"[{job_id}] Prediction complete for {ticker}.")
 
     except Exception as e:
-        logger.error(f"[{job_id}] Prediction error: {str(e)}", exc_info=True)
-        _jobs[job_id]['status'] = 'error'
-        _jobs[job_id]['error']  = str(e)
-
-# ── Routes ─────────────────────────────────────────────────────────────────────
-
-@predict_bp.route('/predict', methods=['GET', 'POST'])
-def predict():
-    if request.method == 'GET':
-        return render_template("home.html")
-
-    ticker = request.form.get("ticker", "AAPL").upper().strip()
-
-    if not ticker or len(ticker) > 10 or not ticker.replace('.', '').replace('-', '').isalnum():
-        return render_template("home.html",
-            error="Please enter a valid stock ticker (e.g., AAPL, MSFT, GOOGL)")
-
-    try:
-        num_days = int(request.form.get("num_days", 30))
-        if num_days < 1 or num_days > 365:
-            return render_template("home.html",
-                error="Number of days must be between 1 and 365")
-    except ValueError:
-        return render_template("home.html", error="Invalid number of days")
-
-    # Create a job and start background thread
-    job_id = str(uuid.uuid4())
-    _jobs[job_id] = {'status': 'pending', 'result': None, 'error': None}
-
-    thread = threading.Thread(target=run_prediction, args=(job_id, ticker, num_days), daemon=True)
-    thread.start()
-
-    # Return a loading page that polls for the result
-    return render_template("loading.html", job_id=job_id, ticker=ticker)
-
-
-@predict_bp.route('/predict/status/<job_id>')
-def predict_status(job_id):
-    """Poll endpoint — returns JSON with status, and result/error when done."""
-    job = _jobs.get(job_id)
-    if not job:
-        return jsonify({'status': 'error', 'error': 'Job not found'}), 404
-    return jsonify(job)
-
-
-@predict_bp.route('/predict/result/<job_id>')
-def predict_result(job_id):
-    """Render the final results page for a completed job."""
-    job = _jobs.get(job_id)
-    if not job or job['status'] != 'done':
-        return render_template("home.html", error="Result not found or prediction still running.")
-    return render_template("home.html", **job['result'])
+        logger.error(f"Prediction error: {str(e)}", exc_info=True)
+        return render_template("home.html", error=f"Error: {str(e)}")
