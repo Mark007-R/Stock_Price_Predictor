@@ -42,25 +42,25 @@ All modules use **Alpha Vantage API** for fetching financial data and are organi
 
 ---
 
-## 📸 Implementation Screenshots
+## 📸 Current Project Output Screenshots
 
-### Stock-Predictor
-![Stock Predictor](images/Stock_Predictor.png)
+### Home Page - Input Form
+![Home Page](images/Home.png)
 
-### Stock-Prediction & Stock-News
-![Stock Prediction with News](images/Stock_Prediction_with_News.png)
+### Home Page - Prediction Output
+![Home Page Prediction Output](images/Home2.png)
 
-### Stock-Correlation-Heatmap
-![Stock Correlation Heatmap](images/Stock_Correlation_Heatmap.png)
+### Historical Analysis - Overview
+![Historical Analysis Overview](images/Historical.png)
 
-### Correlation-Price-Normalization
-![Correlation and Price Normalization](images/Correlation_and_Price_Normalization.png)
+### Historical Analysis - Detailed View
+![Historical Analysis Detailed View](images/Historical2.png)
 
-### Historical-Price-Analysis
-![Historical Price Analysis with Data](images/Historical_Price_Analysis_with_Data.png)
+### Correlation Analysis - Heatmap
+![Correlation Heatmap](images/Correlation.png)
 
-### Candlestick-Chart
-![Candlestick Chart](images/Candlestick_Chart.png)
+### Correlation Analysis - Normalized Trends
+![Correlation Normalized Trends](images/Correlation2.png)
 
 ---
 
@@ -100,12 +100,12 @@ project-root/
 │   └── images/
 │
 ├── images/
-│   ├── app_overview.png
-│   ├── predictor_output.png
-│   ├── predictor_chart.png
-│   ├── historical_analysis.png
-│   ├── correlation_heatmap.png
-│   └── correlation_normalized.png
+│   ├── Home.png
+│   ├── Home2.png
+│   ├── Historical.png
+│   ├── Historical2.png
+│   ├── Correlation.png
+│   └── Correlation2.png
 └── README.md                 # Project documentation
 ```
 
