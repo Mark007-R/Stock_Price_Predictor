@@ -2,75 +2,237 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Predicting {{ ticker }}...</title>
+    <title>Running — {{ ticker }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .card { background: #1a1d27; border: 1px solid #2a2d3e; border-radius: 16px; padding: 48px 56px; text-align: center; max-width: 440px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
-        .spinner { width: 64px; height: 64px; border: 5px solid #2a2d3e; border-top-color: #6c63ff; border-radius: 50%; animation: spin 0.9s linear infinite; margin: 0 auto 28px; }
+        :root {
+            --coral: #da7756;
+            --warm:  #e8956d;
+            --bg:    #0a0b0d;
+            --card:  #141519;
+            --bdr:   #252630;
+            --muted: #5a5b6a;
+            --sec:   #9899a8;
+            --green: #2dce89;
+            --mono:  'JetBrains Mono', monospace;
+            --sans:  'Space Grotesk', sans-serif;
+        }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body {
+            font-family: var(--sans);
+            background: var(--bg);
+            color: #f0f0f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        body::before {
+            content:'';
+            position:fixed; inset:0;
+            background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
+            pointer-events:none; z-index:0;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--bdr);
+            border-radius: 14px;
+            padding: 3rem 3.5rem;
+            width: 100%;
+            max-width: 460px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            position: relative;
+            z-index: 1;
+        }
+        .brand {
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: var(--muted);
+            margin-bottom: 2rem;
+        }
+        .spinner-wrap {
+            position: relative;
+            width: 72px; height: 72px;
+            margin: 0 auto 2rem;
+        }
+        .spinner {
+            width: 72px; height: 72px;
+            border: 2px solid var(--bdr);
+            border-top-color: var(--coral);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        .spinner-inner {
+            position: absolute;
+            top: 10px; left: 10px;
+            width: 52px; height: 52px;
+            border: 2px solid transparent;
+            border-top-color: rgba(218,119,86,0.3);
+            border-radius: 50%;
+            animation: spin 1.5s linear infinite reverse;
+        }
         @keyframes spin { to { transform: rotate(360deg); } }
-        h2 { font-size: 1.4rem; font-weight: 600; margin-bottom: 10px; color: #fff; }
-        p { font-size: 0.95rem; color: #8b8fa8; line-height: 1.6; }
-        .ticker-badge { display: inline-block; background: #6c63ff22; color: #6c63ff; border: 1px solid #6c63ff44; padding: 4px 14px; border-radius: 20px; font-weight: 700; font-size: 1rem; margin-bottom: 20px; letter-spacing: 1px; }
-        .steps { margin-top: 28px; text-align: left; display: flex; flex-direction: column; gap: 10px; }
-        .step { display: flex; align-items: center; gap: 12px; font-size: 0.88rem; color: #6b6f84; transition: color 0.3s; }
-        .step.active { color: #c0c4d8; }
-        .step.done { color: #4caf7d; }
-        .step-dot { width: 8px; height: 8px; border-radius: 50%; background: #2a2d3e; flex-shrink: 0; transition: background 0.3s; }
-        .step.active .step-dot { background: #6c63ff; }
-        .step.done .step-dot { background: #4caf7d; }
-        .error-box { display: none; margin-top: 20px; background: #ff4d4d18; border: 1px solid #ff4d4d44; border-radius: 8px; padding: 14px; color: #ff7070; font-size: 0.9rem; }
+        .ticker-badge {
+            display: inline-block;
+            font-family: var(--mono);
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--coral);
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.05em;
+        }
+        h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #f0f0f2;
+            margin-bottom: 0.4rem;
+        }
+        .sub {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-bottom: 2rem;
+        }
+        .steps {
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            border-top: 1px solid var(--bdr);
+            padding-top: 1.5rem;
+            margin-top: 0.5rem;
+        }
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: var(--mono);
+            font-size: 0.78rem;
+            color: var(--muted);
+            transition: color 0.3s;
+        }
+        .step.active { color: #f0f0f2; }
+        .step.done   { color: var(--green); }
+        .step-indicator {
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            border: 1px solid var(--bdr);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.6rem;
+            flex-shrink: 0;
+            transition: all 0.3s;
+            color: var(--muted);
+        }
+        .step.active .step-indicator {
+            border-color: var(--coral);
+            color: var(--coral);
+            box-shadow: 0 0 8px rgba(218,119,86,0.3);
+        }
+        .step.done .step-indicator {
+            border-color: var(--green);
+            background: rgba(45,206,137,0.1);
+            color: var(--green);
+        }
+        .error-box {
+            display: none;
+            margin-top: 1.5rem;
+            background: rgba(245,54,92,0.1);
+            border: 1px solid rgba(245,54,92,0.3);
+            border-radius: 8px;
+            padding: 0.85rem 1rem;
+            font-family: var(--mono);
+            font-size: 0.78rem;
+            color: #ff6b8a;
+            text-align: left;
+        }
+        .progress-bar-wrap {
+            height: 2px;
+            background: var(--bdr);
+            border-radius: 2px;
+            margin-top: 1.5rem;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--coral);
+            border-radius: 2px;
+            width: 0%;
+            transition: width 3s ease;
+            box-shadow: 0 0 8px rgba(218,119,86,0.5);
+        }
     </style>
 </head>
 <body>
 <div class="card">
-    <div class="spinner" id="spinner"></div>
+    <div class="brand">StockAI · Neural Engine</div>
+    <div class="spinner-wrap">
+        <div class="spinner"></div>
+        <div class="spinner-inner"></div>
+    </div>
     <div class="ticker-badge">{{ ticker }}</div>
     <h2>Running Prediction</h2>
-    <p>Training the LSTM model on 2 years of data.<br>This takes 30–90 seconds.</p>
+    <p class="sub">Training LSTM on 1 year of market data.<br>Estimated 15–40 seconds.</p>
     <div class="steps">
-        <div class="step active" id="step1"><div class="step-dot"></div> Fetching historical data</div>
-        <div class="step" id="step2"><div class="step-dot"></div> Preparing training sequences</div>
-        <div class="step" id="step3"><div class="step-dot"></div> Training LSTM model</div>
-        <div class="step" id="step4"><div class="step-dot"></div> Generating future predictions</div>
+        <div class="step active" id="step1"><div class="step-indicator">01</div>Fetching historical data</div>
+        <div class="step"        id="step2"><div class="step-indicator">02</div>Building training sequences</div>
+        <div class="step"        id="step3"><div class="step-indicator">03</div>Training LSTM model</div>
+        <div class="step"        id="step4"><div class="step-indicator">04</div>Generating forecast</div>
     </div>
+    <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progressBar"></div></div>
     <div class="error-box" id="errorBox"></div>
 </div>
+
 <script>
-    const jobId = "{{ job_id }}";
-    let elapsed = 0;
-    const steps = ["step1","step2","step3","step4"];
-    const stepTimings = [3, 10, 20, 50];
-    function advanceSteps() {
-        for (let i = 0; i < steps.length; i++) {
-            const el = document.getElementById(steps[i]);
-            if (elapsed >= stepTimings[i]) {
-                if (i > 0) document.getElementById(steps[i-1]).className = "step done";
-                el.className = "step active";
-            }
+const jobId = "{{ job_id }}";
+let elapsed = 0;
+const steps = ["step1","step2","step3","step4"];
+const stepAt = [2, 8, 15, 32];
+const pBar = document.getElementById('progressBar');
+
+function advanceSteps() {
+    let lastActive = 0;
+    for (let i=0; i<steps.length; i++) {
+        if (elapsed >= stepAt[i]) {
+            if (i>0) document.getElementById(steps[i-1]).className = 'step done';
+            document.getElementById(steps[i]).className = 'step active';
+            lastActive = i;
         }
     }
-    function poll() {
-        fetch(`/predict/status/${jobId}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.status === "done") {
-                    steps.forEach(s => document.getElementById(s).className = "step done");
-                    window.location.href = `/predict/result/${jobId}`;
-                } else if (data.status === "error") {
-                    document.getElementById("spinner").style.borderTopColor = "#ff4d4d";
-                    const box = document.getElementById("errorBox");
-                    box.style.display = "block";
-                    box.textContent = "Error: " + data.error;
-                } else {
-                    elapsed += 3;
-                    advanceSteps();
-                    setTimeout(poll, 3000);
-                }
-            })
-            .catch(() => { elapsed += 3; advanceSteps(); setTimeout(poll, 3000); });
-    }
-    setTimeout(poll, 3000);
+    const pct = Math.min(95, (elapsed / 45) * 100);
+    pBar.style.width = pct + '%';
+}
+
+function poll() {
+    fetch(`/predict/status/${jobId}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'done') {
+                steps.forEach(s => document.getElementById(s).className = 'step done');
+                pBar.style.width = '100%';
+                pBar.style.background = '#2dce89';
+                setTimeout(() => { window.location.href = `/predict/result/${jobId}`; }, 300);
+            } else if (data.status === 'error') {
+                document.querySelector('.spinner').style.borderTopColor = '#f5365c';
+                const box = document.getElementById('errorBox');
+                box.style.display = 'block';
+                box.textContent = '⚠ ' + data.error;
+                pBar.style.background = '#f5365c';
+                pBar.style.width = '100%';
+            } else {
+                elapsed += 3;
+                advanceSteps();
+                setTimeout(poll, 3000);
+            }
+        })
+        .catch(() => { elapsed += 3; advanceSteps(); setTimeout(poll, 3000); });
+}
+
+// Start progress bar animation immediately
+setTimeout(() => { pBar.style.width = '8%'; }, 100);
+setTimeout(poll, 3000);
 </script>
 </body>
 </html>

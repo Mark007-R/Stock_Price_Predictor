@@ -1,411 +1,202 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="row">
-    <div class="col-lg-12">
-        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
-            <div class="card-body">
-                <h2 class="card-title text-center mb-3">📈 Stock Price Predictor</h2>
-                <p class="text-center text-muted mb-4">Predict future stock prices using LSTM Neural Networks powered by
-                    AI</p>
 
-                <form method="POST" action="/predict" class="row g-3 mt-3">
-                    <div class="col-md-5">
-                        <label for="ticker" class="form-label">Stock Ticker Symbol</label>
-                        <input type="text" name="ticker" id="ticker" class="form-control"
-                            value="{{ request.form.ticker or 'AAPL' }}" placeholder="e.g., AAPL, MSFT, TSLA"
-                            pattern="[A-Za-z]{1,10}" required>
-                        <small class="form-text">Enter a valid stock ticker symbol</small>
-                    </div>
+<div class="d-flex align-items-end justify-content-between mb-4 fade-up">
+    <div>
+        <div class="page-sub mb-1">// LSTM Neural Network</div>
+        <h1 class="page-heading">Stock Price Predictor</h1>
+    </div>
+    {% if ticker %}
+    <div style="font-family:var(--mono);font-size:0.75rem;color:var(--text-muted);">
+        Last run: <span style="color:var(--claude-coral);">{{ ticker }}</span> · {{ last_date }}
+    </div>
+    {% endif %}
+</div>
 
-                    <div class="col-md-5">
-                        <label for="num_days" class="form-label">Prediction Period (Days)</label>
-                        <input type="number" name="num_days" id="num_days" class="form-control"
-                            value="{{ request.form.num_days or 30 }}" min="1" max="365" required>
-                        <small class="form-text">Choose between 1 to 365 days</small>
-                    </div>
-
-                    <div class="col-md-2 d-flex align-items-end">
-                        <button type="submit" class="btn btn-success w-100">
-                            <strong>🚀 Predict</strong>
-                        </button>
-                    </div>
-                </form>
+<div class="card mb-4 fade-up-1">
+    <div class="card-body">
+        <div class="card-title">Parameters</div>
+        <form method="POST" action="/predict" class="row g-3">
+            <div class="col-md-5">
+                <label class="form-label">Ticker Symbol</label>
+                <input type="text" name="ticker" class="form-control"
+                    value="{{ request.form.ticker or 'AAPL' }}"
+                    placeholder="AAPL, MSFT, TSLA…" required>
+                <div class="form-text">NYSE / NASDAQ symbol</div>
             </div>
-        </div>
-
-        {% if error %}
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <strong>⚠️ Error:</strong> {{ error }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        {% endif %}
-
-        {% if ticker %}
-        <!-- Current Price Section -->
-        <div class="row mb-4">
-            <div class="col-md-4 mb-3">
-                <div class="metric-card">
-                    <div class="metric-label">Stock Ticker</div>
-                    <div class="metric-value">{{ ticker }}</div>
-                </div>
+            <div class="col-md-5">
+                <label class="form-label">Prediction Horizon (Days)</label>
+                <input type="number" name="num_days" class="form-control"
+                    value="{{ request.form.num_days or 30 }}" min="1" max="365" required>
+                <div class="form-text">1 – 365 days</div>
             </div>
-            <div class="col-md-4 mb-3">
-                <div class="metric-card">
-                    <div class="metric-label">Current Price</div>
-                    <div class="metric-value">${{ '%.2f'|format(current_price) }}</div>
-                    <small style="opacity: 0.9;">As of {{ last_date }}</small>
-                </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">Run →</button>
             </div>
-            <div class="col-md-4 mb-3">
-                <div class="metric-card">
-                    <div class="metric-label">Model Accuracy</div>
-                    <div class="metric-value" style="font-size: 1.5rem;">
-                        {% if rmse %}
-                        RMSE: ${{ rmse }}
-                        {% endif %}
-                    </div>
-                    {% if mae %}
-                    <small style="opacity: 0.9;">MAE: ${{ mae }}</small>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <!-- Historical Predictions Chart -->
-        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
-            <div class="card-body">
-                <h5 class="card-title mb-4">📊 Model Validation: Predicted vs Actual Prices</h5>
-                <div style="position: relative; height: 400px;">
-                    <canvas id="validationChart"></canvas>
-                </div>
-            </div>
-        </div>
-
-        <!-- Historical Predictions Table -->
-        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
-            <div class="card-body">
-                <h5 class="card-title mb-4">📋 Prediction Details (Last {{ actual|length }} Days)</h5>
-                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                    <table class="table table-bordered table-hover text-center align-middle">
-                        <thead class="table-light sticky-top">
-                            <tr>
-                                <th>Date</th>
-                                <th>Actual Price</th>
-                                <th>Predicted Price</th>
-                                <th>Difference</th>
-                                <th>Accuracy</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for date, a, p in zip(dates, actual, predicted) %}
-                            <tr>
-                                <td><strong>{{ date }}</strong></td>
-                                <td><strong>${{ '%.2f'|format(a) }}</strong></td>
-                                <td><strong>${{ '%.2f'|format(p) }}</strong></td>
-                                <td class="{% if (a-p) > 0 %}text-danger{% else %}text-success{% endif %}">
-                                    <strong>${{ '%.2f'|format(a-p) }}</strong>
-                                </td>
-                                <td>
-                                    {% set accuracy = 100 - (abs(a-p)/a * 100) %}
-                                    <span
-                                        class="badge {% if accuracy >= 95 %}bg-success{% elif accuracy >= 90 %}bg-warning{% else %}bg-danger{% endif %}">
-                                        {{ '%.1f'|format(accuracy) }}%
-                                    </span>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Future Predictions Chart -->
-        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
-            <div class="card-body">
-                <h5 class="card-title mb-4">🔮 Future Price Predictions (Next {{ future_preds|length }} Days)</h5>
-                <div style="position: relative; height: 400px;">
-                    <canvas id="futureChart"></canvas>
-                </div>
-            </div>
-        </div>
-
-        <!-- Future Predictions Table -->
-        <div class="card mb-4" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
-            <div class="card-body">
-                <h5 class="card-title mb-4">📅 Future Prediction Details</h5>
-                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                    <table class="table table-bordered table-hover text-center align-middle">
-                        <thead class="table-light sticky-top">
-                            <tr>
-                                <th>Date</th>
-                                <th>Predicted Price</th>
-                                <th>Change from Current</th>
-                                <th>% Change</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for d, p in zip(future_dates, future_preds) %}
-                            <tr>
-                                <td><strong>{{ d }}</strong></td>
-                                <td><strong>${{ '%.2f'|format(p) }}</strong></td>
-                                <td class="{% if (p-current_price) > 0 %}text-success{% else %}text-danger{% endif %}">
-                                    <strong>${{ '%.2f'|format(p-current_price) }}</strong>
-                                </td>
-                                <td>
-                                    {% set pct_change = ((p-current_price)/current_price * 100) %}
-                                    <span class="badge {% if pct_change > 0 %}bg-success{% else %}bg-danger{% endif %}">
-                                        {{ '%.2f'|format(pct_change) }}%
-                                    </span>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Download Section -->
-        <div class="text-center mb-4">
-            <button class="btn btn-outline-success btn-lg" onclick="downloadCSV()">
-                📥 Download Predictions as CSV
-            </button>
-        </div>
-        {% endif %}
+        </form>
     </div>
 </div>
 
+{% if error %}
+<div class="alert alert-danger fade-up">⚠ {{ error }}</div>
+{% endif %}
+
+{% if ticker %}
+<div class="row g-3 mb-4">
+    <div class="col-md-3 fade-up-1">
+        <div class="metric-tile coral">
+            <div class="label">Ticker</div>
+            <div class="value">{{ ticker }}</div>
+            <div class="sub">as of {{ last_date }}</div>
+        </div>
+    </div>
+    <div class="col-md-3 fade-up-2">
+        <div class="metric-tile">
+            <div class="label">Current Price</div>
+            <div class="value">${{ '%.2f'|format(current_price) }}</div>
+            <div class="sub">last close · {{ data_points }} pts</div>
+        </div>
+    </div>
+    <div class="col-md-3 fade-up-3">
+        <div class="metric-tile">
+            <div class="label">RMSE / MAE</div>
+            <div class="value" style="font-size:1.3rem;">${{ rmse }}</div>
+            <div class="sub">MAE ${{ mae }} · MAPE {{ mape }}%</div>
+        </div>
+    </div>
+    <div class="col-md-3 fade-up-4">
+        <div class="metric-tile {% if confidence == 'High' %}green{% elif confidence == 'Low' %}red{% else %}coral{% endif %}">
+            <div class="label">Confidence</div>
+            <div class="value" style="font-size:1.3rem;">{{ confidence }}</div>
+            <div class="sub">Score {{ confidence_score }}% · Vol {{ volatility }}%</div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4 fade-up">
+    <div class="card-body">
+        <div class="card-title">Model Validation — Predicted vs Actual</div>
+        <div style="position:relative;height:380px;">
+            <canvas id="validationChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4 fade-up">
+    <div class="card-body">
+        <div class="card-title">Validation Detail — {{ actual|length }} Days</div>
+        <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
+            <table class="table table-hover">
+                <thead>
+                    <tr><th>Date</th><th>Actual</th><th>Predicted</th><th>Delta</th><th>Accuracy</th></tr>
+                </thead>
+                <tbody>
+                    {% for row in actual_predicted_zip %}
+                    {% set date = row[0] %}{% set a = row[1] %}{% set p = row[2] %}
+                    <tr>
+                        <td>{{ date }}</td>
+                        <td>${{ '%.2f'|format(a) }}</td>
+                        <td>${{ '%.2f'|format(p) }}</td>
+                        <td class="{% if (a-p) > 0 %}text-danger{% else %}text-success{% endif %}">${{ '%.2f'|format(a-p) }}</td>
+                        <td>
+                            {% set acc = 100 - (((a-p)|abs)/a * 100) %}
+                            <span class="badge {% if acc >= 95 %}bg-success{% elif acc >= 90 %}bg-warning{% else %}bg-danger{% endif %}">{{ '%.1f'|format(acc) }}%</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4 fade-up">
+    <div class="card-body">
+        <div class="card-title">Future Forecast — {{ future_preds|length }} Day Horizon</div>
+        <div style="position:relative;height:380px;">
+            <canvas id="futureChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4 fade-up">
+    <div class="card-body">
+        <div class="card-title">Forecast Detail</div>
+        <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
+            <table class="table table-hover">
+                <thead>
+                    <tr><th>Date</th><th>Forecast</th><th>Δ Current</th><th>% Change</th></tr>
+                </thead>
+                <tbody>
+                    {% for row in future_zip %}
+                    {% set d = row[0] %}{% set p = row[1] %}
+                    <tr>
+                        <td>{{ d }}</td>
+                        <td>${{ '%.2f'|format(p) }}</td>
+                        <td class="{% if (p-current_price) > 0 %}text-success{% else %}text-danger{% endif %}">${{ '%.2f'|format(p-current_price) }}</td>
+                        <td>
+                            {% set pct = ((p-current_price)/current_price * 100) %}
+                            <span class="badge {% if pct > 0 %}bg-success{% else %}bg-danger{% endif %}">{{ '%.2f'|format(pct) }}%</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="text-center mb-4 fade-up">
+    <button class="btn btn-outline-success" onclick="downloadCSV()">↓ Export CSV</button>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 {% if ticker %}
 <script>
-    // Chart.js default configuration
-    Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.font.size = 12;
+const CORAL = '#da7756', GREEN = '#2dce89', BLUE = '#5e72e4';
+const chartOpts = (extra={}) => ({
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+        legend: { labels: { usePointStyle: true, padding: 20 } },
+        tooltip: { backgroundColor: '#141519', borderColor: '#252630', borderWidth: 1, padding: 12, cornerRadius: 6, ...extra.tooltip }
+    },
+    scales: {
+        y: { grid: { color: '#1a1b21' }, ticks: { callback: v => '$' + v.toFixed(0) } },
+        x: { grid: { display: false }, ticks: { maxRotation: 45, maxTicksLimit: 12 } }
+    }, ...extra
+});
 
-    // Validation Chart
-    const validationCtx = document.getElementById('validationChart').getContext('2d');
-    const validationChart = new Chart(validationCtx, {
-        type: 'line',
-        data: {
-            labels: {{ dates| tojson }},
-    datasets: [
-        {
-            label: 'Actual Price',
-            data: {{ actual| tojson }},
-        borderColor: '#10b981',
-        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-        tension: 0.4,
-        fill: true,
-        borderWidth: 3,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        pointBackgroundColor: '#10b981',
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2
-                },
-        {
-            label: 'Predicted Price',
-            data: {{ predicted| tojson }},
-        borderColor: '#f59e0b',
-        backgroundColor: 'rgba(245, 158, 11, 0.1)',
-        tension: 0.4,
-        fill: true,
-        borderWidth: 3,
-        borderDash: [5, 5],
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        pointBackgroundColor: '#f59e0b',
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2
-                }
-    ]
-        },
-    options: {
-        responsive: true,
-            maintainAspectRatio: false,
-                interaction: {
-            mode: 'index',
-                intersect: false,
-            },
-        plugins: {
-            legend: {
-                position: 'top',
-                    labels: {
-                    padding: 15,
-                        font: {
-                        size: 13,
-                            weight: 600
-                    },
-                    usePointStyle: true,
-                        pointStyle: 'circle'
-                }
-            },
-            tooltip: {
-                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    padding: 12,
-                        titleFont: {
-                    size: 14,
-                        weight: 'bold'
-                },
-                bodyFont: {
-                    size: 13
-                },
-                cornerRadius: 8,
-                    callbacks: {
-                    label: function(context) {
-                        return context.dataset.label + ': $' + context.parsed.y.toFixed(2);
-                    }
-                }
-            }
-        },
-        scales: {
-            y: {
-                beginAtZero: false,
-                    grid: {
-                    color: 'rgba(0, 0, 0, 0.05)',
-                        drawBorder: false
-                },
-                ticks: {
-                    callback: function(value) {
-                        return '$' + value.toFixed(2);
-                    },
-                    font: {
-                        size: 11
-                    }
-                }
-            },
-            x: {
-                grid: {
-                    display: false
-                },
-                ticks: {
-                    maxRotation: 45,
-                        minRotation: 45,
-                            font: {
-                        size: 10
-                    }
-                }
-            }
-        }
-    }
-    });
+new Chart(document.getElementById('validationChart'), {
+    type: 'line',
+    data: {
+        labels: {{ dates|tojson }},
+        datasets: [
+            { label: 'Actual', data: {{ actual|tojson }}, borderColor: GREEN, backgroundColor: 'rgba(45,206,137,0.06)', tension: 0.3, fill: true, borderWidth: 2, pointRadius: 2, pointHoverRadius: 5, pointBackgroundColor: GREEN },
+            { label: 'Predicted', data: {{ predicted|tojson }}, borderColor: CORAL, backgroundColor: 'rgba(218,119,86,0.06)', tension: 0.3, fill: true, borderWidth: 2, borderDash: [4,4], pointRadius: 2, pointHoverRadius: 5, pointBackgroundColor: CORAL }
+        ]
+    },
+    options: { ...chartOpts(), plugins: { ...chartOpts().plugins, tooltip: { ...chartOpts().plugins.tooltip, callbacks: { label: c => c.dataset.label + ': $' + c.parsed.y.toFixed(2) } } } }
+});
 
-    // Future Predictions Chart
-    const futureCtx = document.getElementById('futureChart').getContext('2d');
-    const futureChart = new Chart(futureCtx, {
-        type: 'line',
-        data: {
-            labels: {{ future_dates| tojson }},
-    datasets: [{
-        label: 'Predicted Price',
-        data: {{ future_preds| tojson }},
-        borderColor: '#667eea',
-        backgroundColor: 'rgba(102, 126, 234, 0.1)',
-        tension: 0.4,
-        fill: true,
-        borderWidth: 3,
-        pointRadius: 5,
-        pointHoverRadius: 7,
-        pointBackgroundColor: '#667eea',
-        pointBorderColor: '#fff',
-        pointBorderWidth: 2
-            }]
-        },
-    options: {
-        responsive: true,
-            maintainAspectRatio: false,
-                interaction: {
-            mode: 'index',
-                intersect: false,
-            },
-        plugins: {
-            legend: {
-                position: 'top',
-                    labels: {
-                    padding: 15,
-                        font: {
-                        size: 13,
-                            weight: 600
-                    },
-                    usePointStyle: true,
-                        pointStyle: 'circle'
-                }
-            },
-            tooltip: {
-                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    padding: 12,
-                        titleFont: {
-                    size: 14,
-                        weight: 'bold'
-                },
-                bodyFont: {
-                    size: 13
-                },
-                cornerRadius: 8,
-                    callbacks: {
-                    label: function(context) {
-                        return 'Predicted: $' + context.parsed.y.toFixed(2);
-                    }
-                }
-            }
-        },
-        scales: {
-            y: {
-                beginAtZero: false,
-                    grid: {
-                    color: 'rgba(0, 0, 0, 0.05)',
-                        drawBorder: false
-                },
-                ticks: {
-                    callback: function(value) {
-                        return '$' + value.toFixed(2);
-                    },
-                    font: {
-                        size: 11
-                    }
-                }
-            },
-            x: {
-                grid: {
-                    display: false
-                },
-                ticks: {
-                    maxRotation: 45,
-                        minRotation: 45,
-                            font: {
-                        size: 10
-                    }
-                }
-            }
-        }
-    }
-    });
+new Chart(document.getElementById('futureChart'), {
+    type: 'line',
+    data: {
+        labels: {{ future_dates|tojson }},
+        datasets: [{ label: 'Forecast', data: {{ future_preds|tojson }}, borderColor: CORAL, backgroundColor: 'rgba(218,119,86,0.08)', tension: 0.4, fill: true, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 6, pointBackgroundColor: CORAL, pointBorderColor: '#0a0b0d', pointBorderWidth: 2 }]
+    },
+    options: { ...chartOpts(), plugins: { ...chartOpts().plugins, tooltip: { ...chartOpts().plugins.tooltip, callbacks: { label: c => 'Forecast: $' + c.parsed.y.toFixed(2) } } } }
+});
 
-    // Download CSV function
-    function downloadCSV() {
-        let csv = 'Date,Type,Price\n';
-
-        // Add actual and predicted data
-        {% for date, a, p in zip(dates, actual, predicted) %}
-        csv += '{{ date }},Actual,{{ a }}\n';
-        csv += '{{ date }},Predicted,{{ p }}\n';
-        {% endfor %}
-
-        // Add future predictions
-        {% for d, p in zip(future_dates, future_preds) %}
-        csv += '{{ d }},Future Prediction,{{ p }}\n';
-        {% endfor %}
-
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = '{{ ticker }}_predictions.csv';
-        a.click();
-    }
+function downloadCSV() {
+    let csv = 'Date,Type,Price\n';
+    {% for row in actual_predicted_zip %}csv += '{{ row[0] }},Actual,{{ row[1] }}\n{{ row[0] }},Predicted,{{ row[2] }}\n';{% endfor %}
+    {% for row in future_zip %}csv += '{{ row[0] }},Forecast,{{ row[1] }}\n';{% endfor %}
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], {type:'text/csv'})), download: '{{ ticker }}_predictions.csv' });
+    a.click();
+}
 </script>
 {% endif %}
 {% endblock %}
