@@ -1,4 +1,4 @@
-# 📈 Stock Analysis and Prediction Web App
+# 📈 StockAI
 
 This project is a **Flask-based multi-page web application** that provides:
 - **LSTM-based Stock Price Prediction**
@@ -44,22 +44,16 @@ All modules use **Alpha Vantage API** for fetching financial data and are organi
 
 ## 📸 Current Project Output Screenshots
 
-### Home Page - Input Form
+### Home Page
 ![Home Page](images/Home.png)
-
-### Home Page - Prediction Output
 ![Home Page Prediction Output](images/Home2.png)
 
-### Historical Analysis - Overview
+### Historical Analysis -
 ![Historical Analysis Overview](images/Historical.png)
-
-### Historical Analysis - Detailed View
 ![Historical Analysis Detailed View](images/Historical2.png)
 
-### Correlation Analysis - Heatmap
+### Correlation Analysis
 ![Correlation Heatmap](images/Correlation.png)
-
-### Correlation Analysis - Normalized Trends
 ![Correlation Normalized Trends](images/Correlation2.png)
 
 ---
@@ -115,8 +109,8 @@ project-root/
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/stock-analysis-flask.git
-cd stock-analysis-flask
+git clone https://github.com/Mark007-R/StockAI.git
+cd StockAI
 ```
 
 ### 2. Create and activate a virtual environment
