@@ -128,8 +128,7 @@ don't know, with a claim the future can check.
 │   └── tracking/mlflow_runs.py # benchmark-first MLflow logging
 ├── tests/                      # 90 offline tests — see below
 ├── experiments/                # day01..day09 runnable experiment scripts
-├── results/                    # every metric CSV + plots + samples the reports cite
-├── reports/                    # daily research reports (day01..day10)
+├── results/                    # every metric CSV + JSON behind the numbers below
 └── docs/                       # TS_AUDIT, DATA_LEAKAGE, TARGET_REFRAMING, MODEL_CARD, DEMO
 ```
 
@@ -183,18 +182,18 @@ curl -s -X POST localhost:8000/backtest -H "Content-Type: application/json" \
 
 ## The sprint, day by day
 
-| Day | Phase | Report |
+| Day | Phase | Metrics |
 |---|---|---|
-| 1 | Audit + scaler-leakage fix + honest baselines | [reports/day01](reports/day01_phase1_report.md) |
-| 2 | Returns target + walk-forward harness | [reports/day02](reports/day02_phase2_report.md) |
-| 3 | 5-family bake-off + cost-aware backtest | [reports/day03](reports/day03_phase2_report.md) |
-| 4 | Calendar/regime features + multi-horizon (both hurt) | [reports/day04](reports/day04_phase2_report.md) |
-| 5 | `src/` refactor + FastAPI + conformal intervals | [reports/day05](reports/day05_phase3_report.md) |
-| 6 | Optuna sweep (optimum = the random walk) + failure modes | [reports/day06](reports/day06_phase4_report.md) |
-| 7 | Portfolio backtest + PatchTST (negative result) | [reports/day07](reports/day07_phase5_report.md) |
-| 8 | Frontier LLM comparison (coin flip) + ablation | [reports/day08](reports/day08_phase6_report.md) |
-| 9 | Docker + Redis + MLflow + ops dashboard | [reports/day09](reports/day09_phase7_report.md) |
-| 10 | Tests + docs + demo — **project complete** | [reports/day10](reports/day10_phase8_report.md) |
+| 1 | Audit + scaler-leakage fix + honest baselines | `results/phase1_leakage_comparison.csv` |
+| 2 | Returns target + walk-forward harness | `results/phase2a_walkforward_summary.csv` |
+| 3 | 5-family bake-off + cost-aware backtest | `results/phase2b_models.csv`, `results/phase2b_trading.csv` |
+| 4 | Calendar/regime features + multi-horizon (both hurt) | `results/phase2c_features.csv`, `results/phase2c_summary.csv` |
+| 5 | `src/` refactor + FastAPI + conformal intervals | `results/phase3_intervals.csv` |
+| 6 | Optuna sweep (optimum = the random walk) + failure modes | `results/phase4_leaderboard.csv`, `results/phase4_failure_modes.csv` |
+| 7 | Portfolio backtest + PatchTST (negative result) | `results/phase5_portfolio.csv`, `results/phase5_transformer.csv` |
+| 8 | Frontier LLM comparison (coin flip) + ablation | `results/phase6_same_sample.csv`, `results/ablation.csv` |
+| 9 | Docker + Redis + MLflow + ops dashboard | `results/phase7_mlflow_summary.csv` |
+| 10 | Tests + docs + demo — **project complete** | `results/metrics.json` |
 
 ## Limitations
 
