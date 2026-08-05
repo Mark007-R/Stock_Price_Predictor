@@ -38,9 +38,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Serving code + the indicator math the API reuses from the Flask app.
 COPY src/ src/
 COPY historical.py .
-# Sprint result tables the dashboard renders (small CSVs; plots excluded
-# via .dockerignore).
-COPY results/ results/
 
 EXPOSE 8000 8501
 
