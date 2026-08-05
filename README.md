@@ -7,7 +7,7 @@ buy-and-hold, and every number here says so out loud.*
 
 > 🔗 **Live demo:** https://iambatman07-stock-price-forecaster.hf.space · [HF Space](https://huggingface.co/spaces/IamBatman07/Stock-Price-Forecaster)
 >
-> ⚡ **60-second local demo:** `python demo.py` (offline, ~8s — talk-track in [docs/DEMO.md](docs/DEMO.md))
+> ⚡ **60-second local demo:** `python demo.py` (offline, ~8s)
 
 ---
 
@@ -127,9 +127,7 @@ don't know, with a claim the future can check.
 │   ├── serving/dashboard.py    # Streamlit ops dashboard (the sprint's evidence, live)
 │   └── tracking/mlflow_runs.py # benchmark-first MLflow logging
 ├── tests/                      # 90 offline tests — see below
-├── experiments/                # day01..day09 runnable experiment scripts
-├── results/                    # every metric CSV + JSON behind the numbers below
-└── docs/                       # TS_AUDIT, DATA_LEAKAGE, TARGET_REFRAMING, MODEL_CARD, DEMO
+└── experiments/                # day01..day09 runnable experiment scripts
 ```
 
 **Design stances**
@@ -182,25 +180,25 @@ curl -s -X POST localhost:8000/backtest -H "Content-Type: application/json" \
 
 ## The sprint, day by day
 
-| Day | Phase | Metrics |
-|---|---|---|
-| 1 | Audit + scaler-leakage fix + honest baselines | `results/phase1_leakage_comparison.csv` |
-| 2 | Returns target + walk-forward harness | `results/phase2a_walkforward_summary.csv` |
-| 3 | 5-family bake-off + cost-aware backtest | `results/phase2b_models.csv`, `results/phase2b_trading.csv` |
-| 4 | Calendar/regime features + multi-horizon (both hurt) | `results/phase2c_features.csv`, `results/phase2c_summary.csv` |
-| 5 | `src/` refactor + FastAPI + conformal intervals | `results/phase3_intervals.csv` |
-| 6 | Optuna sweep (optimum = the random walk) + failure modes | `results/phase4_leaderboard.csv`, `results/phase4_failure_modes.csv` |
-| 7 | Portfolio backtest + PatchTST (negative result) | `results/phase5_portfolio.csv`, `results/phase5_transformer.csv` |
-| 8 | Frontier LLM comparison (coin flip) + ablation | `results/phase6_same_sample.csv`, `results/ablation.csv` |
-| 9 | Docker + Redis + MLflow + ops dashboard | `results/phase7_mlflow_summary.csv` |
-| 10 | Tests + docs + demo — **project complete** | `results/metrics.json` |
+| Day | Phase |
+|---|---|
+| 1 | Audit + scaler-leakage fix + honest baselines |
+| 2 | Returns target + walk-forward harness |
+| 3 | 5-family bake-off + cost-aware backtest |
+| 4 | Calendar/regime features + multi-horizon (both hurt) |
+| 5 | `src/` refactor + FastAPI + conformal intervals |
+| 6 | Optuna sweep (optimum = the random walk) + failure modes |
+| 7 | Portfolio backtest + PatchTST (negative result) |
+| 8 | Frontier LLM comparison (coin flip) + ablation |
+| 9 | Docker + Redis + MLflow + ops dashboard |
+| 10 | Tests + docs + demo — **project complete** |
 
 ## Limitations
 
 Survivorship-biased ticker universe (chosen in 2026, all survivors); US
 large-cap daily bars only; long/flat execution model (no shorting, slippage
 model is a flat bps charge); interval coverage assumes exchangeable errors.
-Details in [docs/MODEL_CARD.md](docs/MODEL_CARD.md). **Nothing in this repo is
+**Nothing in this repo is
 investment advice — the repo's own measurements argue against using it as any.**
 
 ## License
